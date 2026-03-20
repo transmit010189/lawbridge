@@ -124,7 +124,7 @@ export async function POST(req: NextRequest) {
       success: true,
       durationSec,
       minutes,
-      chargePoints: Math.min(totalCharge, (await adminDb.doc(`wallets/${workerUid}`).get()).data()?.pointsBalance ?? totalCharge + totalCharge),
+      chargePoints: totalCharge,
       platformFeePoints: platformFee,
       lawyerPayoutPoints: lawyerPayout,
     });

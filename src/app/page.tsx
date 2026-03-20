@@ -9,7 +9,10 @@ import {
   Scale,
   User,
   Wallet,
+  History,
+  Shield,
 } from "lucide-react";
+import { doc, getDoc, collection, query, where, orderBy, getDocs, limit } from "firebase/firestore";
 import { AuthProvider, useAuthContext } from "@/components/auth/AuthProvider";
 import { LoginPage } from "@/components/auth/LoginPage";
 import { BrandLogo } from "@/components/branding/BrandLogo";
@@ -17,10 +20,12 @@ import { LocaleMenu } from "@/components/branding/LocaleMenu";
 import { AiChatPage } from "@/components/consultation/AiChatPage";
 import { CallWindow } from "@/components/consultation/CallWindow";
 import { IncomingCallBanner } from "@/components/consultation/IncomingCallBanner";
+import { PostCallRating } from "@/components/consultation/PostCallRating";
 import { LawyerListPage } from "@/components/lawyer/LawyerListPage";
 import { WalletPage } from "@/components/wallet/WalletPage";
+import { db } from "@/lib/firebase/client";
 import { locales } from "@/lib/i18n";
-import type { SupportedLocale } from "@/types";
+import type { SupportedLocale, Consultation } from "@/types";
 
 type Tab = "home" | "ai" | "lawyers" | "wallet" | "profile";
 
@@ -197,6 +202,14 @@ function HomePage({
     peerName: string;
     ratePerMinute: number;
     role: "worker" | "lawyer";
+    lawyerUid?: string;
+  } | null>(null);
+  const [postCall, setPostCall] = useState<{
+    consultationId: string;
+    lawyerUid: string;
+    lawyerName: string;
+    durationSec: number;
+    chargedPoints: number;
   } | null>(null);
   const copy = getCopy(locale);
   const isLawyer = user?.role === "lawyer";
@@ -229,6 +242,7 @@ function HomePage({
         peerName: lawyerName,
         ratePerMinute: rate,
         role: "worker",
+        lawyerUid,
       });
     } catch (err) {
       console.error("Start call error:", err);
@@ -238,15 +252,28 @@ function HomePage({
 
   const handleCallEnd = async (durationSec: number) => {
     if (!activeCall) return;
+    const callInfo = { ...activeCall };
     try {
-      await fetch("/api/consultation/end", {
+      const res = await fetch("/api/consultation/end", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          consultationId: activeCall.consultationId,
+          consultationId: callInfo.consultationId,
           durationSec,
         }),
       });
+      const data = await res.json();
+
+      // Show rating dialog for workers
+      if (callInfo.role === "worker" && callInfo.lawyerUid) {
+        setPostCall({
+          consultationId: callInfo.consultationId,
+          lawyerUid: callInfo.lawyerUid,
+          lawyerName: callInfo.peerName,
+          durationSec,
+          chargedPoints: data.chargePoints || Math.max(1, Math.ceil(durationSec / 60)) * callInfo.ratePerMinute,
+        });
+      }
     } catch (err) {
       console.error("End call error:", err);
     }
@@ -400,23 +427,7 @@ function HomePage({
             ) : null}
             {currentTab === "wallet" ? <WalletPage locale={locale} /> : null}
             {currentTab === "profile" ? (
-              <div className="mx-auto max-w-3xl rounded-[1.6rem] border border-slate-200 bg-white p-6 shadow-sm">
-                <div className="flex flex-col items-center text-center">
-                  <div className="flex h-20 w-20 items-center justify-center rounded-full bg-slate-100">
-                    <User className="h-10 w-10 text-slate-500" />
-                  </div>
-                  <p className="mt-4 text-2xl font-semibold text-slate-900">
-                    {user?.displayName || user?.email}
-                  </p>
-                  <p className="mt-2 text-sm text-slate-500">{user?.email}</p>
-                  <p className="mt-6 text-xs uppercase tracking-[0.22em] text-slate-400">
-                    {copy.profileTitle}
-                  </p>
-                  <p className="mt-3 max-w-md text-sm leading-7 text-slate-600">
-                    {copy.profileHint}
-                  </p>
-                </div>
-              </div>
+              <ProfilePage locale={locale} />
             ) : null}
           </main>
         </div>
@@ -481,6 +492,20 @@ function HomePage({
           }}
         />
       ) : null}
+
+      {/* Post-call rating dialog */}
+      {postCall && user ? (
+        <PostCallRating
+          consultationId={postCall.consultationId}
+          workerUid={user.uid}
+          lawyerUid={postCall.lawyerUid}
+          lawyerName={postCall.lawyerName}
+          durationSec={postCall.durationSec}
+          chargedPoints={postCall.chargedPoints}
+          locale={locale}
+          onClose={() => setPostCall(null)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -520,6 +545,120 @@ function NoticeCard({ title, items }: { title: string; items: string[] }) {
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+function ProfilePage({ locale }: { locale: SupportedLocale }) {
+  const { user } = useAuthContext();
+  const isZh = locale === "zh-TW";
+  const [consultations, setConsultations] = useState<Consultation[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(true);
+
+  useEffect(() => {
+    if (!user) return;
+    async function fetchHistory() {
+      try {
+        const field = user!.role === "lawyer" ? "lawyerUid" : "workerUid";
+        const q = query(
+          collection(db, "consultations"),
+          where(field, "==", user!.uid),
+          where("status", "==", "completed"),
+          orderBy("createdAt", "desc"),
+          limit(10)
+        );
+        const snap = await getDocs(q);
+        setConsultations(snap.docs.map((d) => d.data() as Consultation));
+      } catch {
+        // Query may fail if index doesn't exist — silently fail
+      } finally {
+        setLoadingHistory(false);
+      }
+    }
+    fetchHistory();
+  }, [user]);
+
+  if (!user) return null;
+  const isLawyer = user.role === "lawyer";
+
+  return (
+    <div className="mx-auto max-w-4xl space-y-5">
+      {/* Profile Card */}
+      <div className="rounded-[1.6rem] border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-start">
+          <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full bg-slate-100">
+            <User className="h-10 w-10 text-slate-500" />
+          </div>
+          <div className="flex-1 text-center sm:text-left">
+            <p className="text-2xl font-semibold text-slate-900">{user.displayName || user.email}</p>
+            <p className="mt-1 text-sm text-slate-500">{user.email}</p>
+            <div className="mt-3 flex flex-wrap justify-center gap-2 sm:justify-start">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600">
+                <Shield className="h-3.5 w-3.5" />
+                {isLawyer ? (isZh ? "律師帳戶" : "Lawyer") : (isZh ? "需求者帳戶" : "Worker")}
+              </span>
+              <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs text-emerald-700">
+                {isZh ? "狀態：啟用" : "Status: Active"}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6 grid gap-4 sm:grid-cols-3">
+          <div className="rounded-[1.2rem] bg-slate-50 px-4 py-3 text-center">
+            <p className="text-xs text-slate-400">{isZh ? "帳戶 UID" : "Account UID"}</p>
+            <p className="mt-1 truncate text-sm font-mono text-slate-700">{user.uid}</p>
+          </div>
+          <div className="rounded-[1.2rem] bg-slate-50 px-4 py-3 text-center">
+            <p className="text-xs text-slate-400">{isZh ? "偏好語言" : "Language"}</p>
+            <p className="mt-1 text-sm text-slate-700">{user.language || locale}</p>
+          </div>
+          <div className="rounded-[1.2rem] bg-slate-50 px-4 py-3 text-center">
+            <p className="text-xs text-slate-400">{isZh ? "建立日期" : "Created"}</p>
+            <p className="mt-1 text-sm text-slate-700">
+              {user.createdAt ? new Date(user.createdAt).toLocaleDateString(locale === "zh-TW" ? "zh-TW" : "en") : "—"}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Consultation History */}
+      <div className="rounded-[1.6rem] border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex items-center gap-2">
+          <History className="h-5 w-5 text-sky-600" />
+          <h3 className="text-lg font-semibold text-slate-900">{isZh ? "諮詢紀錄" : "Consultation History"}</h3>
+        </div>
+
+        {loadingHistory ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+          </div>
+        ) : consultations.length === 0 ? (
+          <div className="mt-4 rounded-[1.4rem] bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
+            {isZh ? "尚無諮詢紀錄。" : "No consultation history yet."}
+          </div>
+        ) : (
+          <div className="mt-4 space-y-2">
+            {consultations.map((c) => (
+              <div key={c.id} className="flex items-center justify-between rounded-[1.2rem] bg-slate-50 px-4 py-3">
+                <div>
+                  <p className="text-sm font-medium text-slate-800">
+                    {isZh ? "語音諮詢" : "Voice Consultation"}
+                  </p>
+                  <p className="text-xs text-slate-400">
+                    {new Date(c.createdAt).toLocaleString(isZh ? "zh-TW" : "en")}
+                    {" · "}
+                    {Math.ceil(c.durationSec / 60)}{isZh ? " 分鐘" : " min"}
+                  </p>
+                </div>
+                <span className={`text-sm font-semibold ${isLawyer ? "text-emerald-600" : "text-red-500"}`}>
+                  {isLawyer ? "+" : "-"}{isLawyer ? c.lawyerPayoutPoints : c.chargePoints} {isZh ? "點" : "pts"}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

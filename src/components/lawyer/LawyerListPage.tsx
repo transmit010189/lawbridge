@@ -1,10 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { collection, getDocs, orderBy, query, where } from "firebase/firestore";
-import { BadgeCheck, Globe, Loader2, Phone, Search, Star } from "lucide-react";
+import { collection, getDocs, orderBy, query, where, doc, setDoc, updateDoc } from "firebase/firestore";
+import { BadgeCheck, Globe, Loader2, Phone, Search, Star, Wifi, WifiOff } from "lucide-react";
 import { db } from "@/lib/firebase/client";
+import { useAuthContext } from "@/components/auth/AuthProvider";
 import { localeNames } from "@/lib/i18n";
+import { CertificateUpload } from "./CertificateUpload";
+import { QRCodeScanner } from "./QRCodeScanner";
 import type { LawyerProfile, SupportedLocale, UserRole } from "@/types";
 
 interface Props {
@@ -64,7 +67,7 @@ const DEMO_LAWYERS: LawyerProfile[] = [
 const en = {
   workerTitle: "Lawyer Help",
   workerSubtitle:
-    "You can browse lawyer profiles and specialties here. Direct calls, recording retention, and evidence-chain tools are not live yet.",
+    "Browse lawyer profiles and specialties. Click \"Start Call\" to begin a consultation.",
   search: "Search by name, specialty, or language...",
   available: "Available",
   offline: "Offline",
@@ -74,14 +77,14 @@ const en = {
   languages: "Languages",
   demo: "Showing demo lawyer data until real profiles are available in Firestore.",
   verified: "Verified",
-  workerNoticeTitle: "Current scope",
+  workerNoticeTitle: "How it works",
   workerNoticeItems: [
-    "The page currently shows verified lawyer profiles only.",
-    "Direct call handling and recording retention are not implemented yet.",
-    "Evidence-chain workflow is not implemented yet.",
+    "Browse verified lawyer profiles and their specialties.",
+    "Click \"Start Call\" to initiate a voice consultation (points will be charged per minute).",
+    "After the call, you can rate the lawyer's service.",
   ],
   lawyerTitle: "Lawyer Desk",
-  lawyerSubtitle: "This page is different from the worker-facing directory.",
+  lawyerSubtitle: "Manage your availability, upload certificates, and view tools.",
   lawyerNoticeTitle: "Rights and obligations",
   lawyerNoticeItems: [
     "Confirm the service boundary before providing any legal opinion.",
@@ -90,17 +93,33 @@ const en = {
   ],
   lawyerScopeTitle: "Current implementation",
   lawyerScopeItems: [
-    "Account, wallet, and lawyer-facing notice flow are available.",
-    "Public worker-facing lawyer browsing is available.",
-    "Direct calls, recordings, payouts, and evidence-chain management are still pending.",
+    "Toggle online/offline status to receive calls.",
+    "Upload your practicing certificate for verification.",
+    "Use QR code scanner for client document processing.",
   ],
   profileOnly: "Profile browsing only. Direct calls are not live yet.",
   startCall: "Start Call",
+  goOnline: "Go Online",
+  goOffline: "Go Offline",
+  onlineStatus: "You are online — workers can call you.",
+  offlineStatus: "You are offline — no incoming calls.",
+  lawyerProfile: "My Lawyer Profile",
+  editProfile: "Edit Profile",
+  saveProfile: "Save",
+  fullName: "Full Name",
+  licenseNo: "License No.",
+  bio: "Bio / Introduction",
+  specialties: "Specialties (comma separated)",
+  ratePerMinute2: "Rate (pts/min)",
+  serviceLanguages2: "Service Languages",
+  profileSaved: "Profile saved!",
+  createProfile: "Create Profile",
+  noProfile: "You haven't created a lawyer profile yet. Fill in the form below to get started.",
 };
 
 const zh = {
   workerTitle: "律師協助",
-  workerSubtitle: "目前可瀏覽律師資料與專長。直接通話、錄音留存與證據鏈流程尚未開放。",
+  workerSubtitle: "瀏覽律師資料與專長，點擊「開始通話」即可發起語音諮詢。",
   search: "輸入姓名、專長或語言...",
   available: "可受理",
   offline: "離線",
@@ -110,28 +129,44 @@ const zh = {
   languages: "服務語言",
   demo: "目前顯示示範律師資料；真實資料加入後會自動替換。",
   verified: "已驗證",
-  workerNoticeTitle: "目前狀態",
+  workerNoticeTitle: "使用說明",
   workerNoticeItems: [
-    "前端目前僅顯示已驗證的律師資料。",
-    "直接通話與錄音留存功能尚未實裝。",
-    "證據鏈流程尚未建置。",
+    "瀏覽已驗證的律師資料與專長。",
+    "點擊「開始通話」發起語音諮詢（將按分鐘扣點數）。",
+    "通話結束後可為律師服務評分。",
   ],
   lawyerTitle: "律師工作台",
-  lawyerSubtitle: "此頁面與需求者看到的律師名單不同。",
+  lawyerSubtitle: "管理上線狀態、上傳證書、使用工具。",
   lawyerNoticeTitle: "權利義務聲明",
   lawyerNoticeItems: [
     "提供法律意見前，請先確認服務邊界與執業責任。",
     "未完成必要程序前，不得讓使用者誤認已成立正式委任關係。",
     "請依適用規範處理保密義務與個資。",
   ],
-  lawyerScopeTitle: "目前已實裝範圍",
+  lawyerScopeTitle: "功能說明",
   lawyerScopeItems: [
-    "帳戶、錢包與律師聲明流程可使用。",
-    "需求者端可瀏覽律師資料。",
-    "直接通話、錄音保存、分潤與證據鏈管理仍待開發。",
+    "切換上線/離線狀態以接收通話。",
+    "上傳執業證書以供審核驗證。",
+    "使用 QR Code 掃描器處理委託文件。",
   ],
   profileOnly: "目前僅提供資料瀏覽與說明，尚未開放直接通話。",
   startCall: "開始通話",
+  goOnline: "上線",
+  goOffline: "離線",
+  onlineStatus: "你目前為上線狀態 — 移工可以撥打諮詢電話。",
+  offlineStatus: "你目前為離線狀態 — 不會收到來電。",
+  lawyerProfile: "我的律師檔案",
+  editProfile: "編輯資料",
+  saveProfile: "儲存",
+  fullName: "姓名",
+  licenseNo: "證號",
+  bio: "簡介 / 自我介紹",
+  specialties: "專長（逗號分隔）",
+  ratePerMinute2: "費率（點/分鐘）",
+  serviceLanguages2: "服務語言",
+  profileSaved: "資料已儲存！",
+  createProfile: "建立檔案",
+  noProfile: "你尚未建立律師檔案。請填寫以下表單開始使用。",
 };
 
 function getCopy(locale: SupportedLocale) {
@@ -141,7 +176,7 @@ function getCopy(locale: SupportedLocale) {
 export function LawyerListPage({ locale, viewerRole, onStartCall }: Props) {
   const copy = getCopy(locale);
   if (viewerRole === "lawyer") {
-    return <LawyerWorkspace copy={copy} />;
+    return <LawyerWorkspace copy={copy} locale={locale} />;
   }
   return <WorkerLawyerDirectory copy={copy} onStartCall={onStartCall} />;
 }
@@ -166,7 +201,7 @@ function WorkerLawyerDirectory({ copy, onStartCall }: { copy: typeof zh; onStart
           setLawyers(DEMO_LAWYERS);
           setIsDemo(true);
         } else {
-          setLawyers(snapshot.docs.map((doc) => doc.data() as LawyerProfile));
+          setLawyers(snapshot.docs.map((d) => d.data() as LawyerProfile));
           setIsDemo(false);
         }
       } catch {
@@ -240,7 +275,107 @@ function WorkerLawyerDirectory({ copy, onStartCall }: { copy: typeof zh; onStart
   );
 }
 
-function LawyerWorkspace({ copy }: { copy: typeof zh }) {
+function LawyerWorkspace({ copy, locale }: { copy: typeof zh; locale: SupportedLocale }) {
+  const { user } = useAuthContext();
+  const [profile, setProfile] = useState<LawyerProfile | null>(null);
+  const [loadingProfile, setLoadingProfile] = useState(true);
+  const [isOnline, setIsOnline] = useState(false);
+  const [toggling, setToggling] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  // Edit form state
+  const [formName, setFormName] = useState("");
+  const [formLicense, setFormLicense] = useState("");
+  const [formBio, setFormBio] = useState("");
+  const [formSpecialties, setFormSpecialties] = useState("");
+  const [formRate, setFormRate] = useState(10);
+  const [formLanguages, setFormLanguages] = useState<SupportedLocale[]>(["zh-TW"]);
+
+  useEffect(() => {
+    async function fetchProfile() {
+      if (!user) return;
+      try {
+        const profileQuery = query(
+          collection(db, "lawyer_profiles"),
+          where("uid", "==", user.uid)
+        );
+        const snap = await getDocs(profileQuery);
+        if (!snap.empty) {
+          const data = snap.docs[0].data() as LawyerProfile;
+          setProfile(data);
+          setIsOnline(data.isOnline);
+          setFormName(data.fullName);
+          setFormLicense(data.licenseNo);
+          setFormBio(data.bio);
+          setFormSpecialties(data.specialties.join(", "));
+          setFormRate(data.ratePerMinute);
+          setFormLanguages(data.serviceLanguages);
+        } else {
+          // No profile yet, pre-fill with user display name
+          setFormName(user.displayName || "");
+          setEditing(true);
+        }
+      } catch (err) {
+        console.error("Fetch lawyer profile error:", err);
+      } finally {
+        setLoadingProfile(false);
+      }
+    }
+    fetchProfile();
+  }, [user]);
+
+  const toggleOnline = async () => {
+    if (!user || !profile) return;
+    setToggling(true);
+    const newStatus = !isOnline;
+    try {
+      await updateDoc(doc(db, "lawyer_profiles", user.uid), { isOnline: newStatus, updatedAt: new Date().toISOString() });
+      setIsOnline(newStatus);
+      setProfile((p) => p ? { ...p, isOnline: newStatus } : p);
+    } catch (err) {
+      console.error("Toggle online error:", err);
+    } finally {
+      setToggling(false);
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    if (!user) return;
+    const now = new Date().toISOString();
+    const profileData: LawyerProfile = {
+      uid: user.uid,
+      fullName: formName.trim(),
+      licenseNo: formLicense.trim(),
+      licenseStatus: profile?.licenseStatus || "pending",
+      specialties: formSpecialties.split(/[,，]/).map((s) => s.trim()).filter(Boolean),
+      serviceLanguages: formLanguages,
+      ratingAvg: profile?.ratingAvg || 0,
+      ratingCount: profile?.ratingCount || 0,
+      bio: formBio.trim(),
+      ratePerMinute: formRate,
+      isOnline: isOnline,
+      createdAt: profile?.createdAt || now,
+      updatedAt: now,
+    };
+
+    try {
+      await setDoc(doc(db, "lawyer_profiles", user.uid), profileData);
+      setProfile(profileData);
+      setEditing(false);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (err) {
+      console.error("Save profile error:", err);
+    }
+  };
+
+  const allLanguages: SupportedLocale[] = ["zh-TW", "en", "id", "vi", "th"];
+
+  if (loadingProfile) {
+    return <div className="flex items-center justify-center py-24"><Loader2 className="h-8 w-8 animate-spin text-[var(--brand-accent)]" /></div>;
+  }
+
   return (
     <div className="mx-auto max-w-6xl space-y-5">
       <div className="brand-hero overflow-hidden rounded-[1.8rem] px-6 py-7 text-white">
@@ -251,9 +386,134 @@ function LawyerWorkspace({ copy }: { copy: typeof zh }) {
         <p className="mt-3 max-w-2xl text-sm leading-7 text-white/84">{copy.lawyerSubtitle}</p>
       </div>
 
+      {/* Online/Offline Toggle */}
+      <div className="rounded-[1.6rem] border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            {isOnline ? (
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100">
+                <Wifi className="h-6 w-6 text-emerald-600" />
+              </div>
+            ) : (
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100">
+                <WifiOff className="h-6 w-6 text-slate-400" />
+              </div>
+            )}
+            <div>
+              <p className="font-semibold text-slate-900">{isOnline ? copy.goOnline : copy.goOffline}</p>
+              <p className="text-sm text-slate-500">{isOnline ? copy.onlineStatus : copy.offlineStatus}</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={toggleOnline}
+            disabled={toggling || !profile}
+            className={`rounded-[1.3rem] px-6 py-3 text-sm font-medium transition ${
+              isOnline
+                ? "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                : "bg-emerald-600 text-white hover:bg-emerald-700"
+            } disabled:opacity-50`}
+          >
+            {toggling ? <Loader2 className="inline h-4 w-4 animate-spin" /> : null}
+            {isOnline ? copy.goOffline : copy.goOnline}
+          </button>
+        </div>
+      </div>
+
+      {/* Profile Editor */}
+      <div className="rounded-[1.6rem] border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex items-center justify-between">
+          <p className="text-sm uppercase tracking-[0.28em] text-slate-400">{copy.lawyerProfile}</p>
+          {profile && !editing ? (
+            <button type="button" onClick={() => setEditing(true)} className="text-sm text-[var(--brand-accent)] hover:underline">{copy.editProfile}</button>
+          ) : null}
+        </div>
+
+        {!profile && !editing ? (
+          <p className="mt-4 text-sm text-slate-500">{copy.noProfile}</p>
+        ) : null}
+
+        {editing ? (
+          <div className="mt-4 space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-slate-500">{copy.fullName}</label>
+              <input type="text" value={formName} onChange={(e) => setFormName(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-[rgba(184,100,67,0.45)]" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-500">{copy.licenseNo}</label>
+              <input type="text" value={formLicense} onChange={(e) => setFormLicense(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-[rgba(184,100,67,0.45)]" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-500">{copy.bio}</label>
+              <textarea value={formBio} onChange={(e) => setFormBio(e.target.value)} rows={3} className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-[rgba(184,100,67,0.45)]" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-500">{copy.specialties}</label>
+              <input type="text" value={formSpecialties} onChange={(e) => setFormSpecialties(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-[rgba(184,100,67,0.45)]" placeholder={locale === "zh-TW" ? "勞動契約, 職災補償, 外籍勞工" : "Labor contracts, Workplace injury, Foreign workers"} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-500">{copy.ratePerMinute2}</label>
+              <input type="number" min={1} max={100} value={formRate} onChange={(e) => setFormRate(Number(e.target.value))} className="mt-1 w-32 rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-[rgba(184,100,67,0.45)]" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-500">{copy.serviceLanguages2}</label>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {allLanguages.map((lang) => (
+                  <button
+                    key={lang}
+                    type="button"
+                    onClick={() => setFormLanguages((prev) => prev.includes(lang) ? prev.filter((l) => l !== lang) : [...prev, lang])}
+                    className={`rounded-full px-3 py-1.5 text-xs transition ${formLanguages.includes(lang) ? "bg-[var(--brand-ink)] text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+                  >
+                    {localeNames[lang] || lang}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <button type="button" onClick={handleSaveProfile} className="rounded-[1.3rem] bg-[var(--brand-ink)] px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800">
+                {profile ? copy.saveProfile : copy.createProfile}
+              </button>
+              {profile ? (
+                <button type="button" onClick={() => setEditing(false)} className="text-sm text-slate-500 hover:text-slate-700">
+                  {locale === "zh-TW" ? "取消" : "Cancel"}
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : profile ? (
+          <div className="mt-4 space-y-3">
+            <div className="flex items-center gap-3">
+              <p className="text-xl font-semibold text-slate-900">{profile.fullName}</p>
+              {profile.licenseStatus === "verified" ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700"><BadgeCheck className="h-3.5 w-3.5" />{copy.verified}</span>
+              ) : (
+                <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-700">{locale === "zh-TW" ? "審核中" : "Pending"}</span>
+              )}
+            </div>
+            <p className="text-sm text-slate-400">{profile.licenseNo}</p>
+            <p className="text-sm leading-7 text-slate-600">{profile.bio}</p>
+            <div className="flex flex-wrap gap-2">
+              {profile.specialties.map((s) => <span key={s} className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600">{s}</span>)}
+            </div>
+            <p className="text-sm font-medium text-[var(--brand-accent)]">{profile.ratePerMinute} {copy.perMinute}</p>
+          </div>
+        ) : null}
+
+        {saved ? (
+          <div className="mt-4 rounded-[1.2rem] bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{copy.profileSaved}</div>
+        ) : null}
+      </div>
+
       <div className="grid gap-5 lg:grid-cols-2">
         <InfoPanel title={copy.lawyerNoticeTitle} items={copy.lawyerNoticeItems} />
         <InfoPanel title={copy.lawyerScopeTitle} items={copy.lawyerScopeItems} />
+      </div>
+
+      {/* Certificate Upload & QR Scanner */}
+      <div className="grid gap-5 lg:grid-cols-2">
+        <CertificateUpload />
+        <QRCodeScanner />
       </div>
     </div>
   );
