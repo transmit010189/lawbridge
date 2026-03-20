@@ -1,0 +1,104 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: check if the requesting user is authenticated
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    // Helper: check if the requesting user owns this document
+    function isOwner(uid) {
+      return isAuth() && request.auth.uid == uid;
+    }
+
+    // Helper: check if the requesting user is an admin
+    function isAdmin() {
+      return isAuth() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // Users — read own, write own profile
+    match /users/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow create: if isOwner(uid);
+      allow update: if isOwner(uid) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Lawyer profiles — public read, write by owner or admin
+    match /lawyer_profiles/{uid} {
+      allow read: if isAuth();
+      allow create: if isOwner(uid);
+      allow update: if isOwner(uid) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Lawyer verifications — only admin and owner
+    match /lawyer_verifications/{docId} {
+      allow read: if isAdmin() || (isAuth() && resource.data.uid == request.auth.uid);
+      allow create: if isAuth();
+      allow update: if isAdmin();
+    }
+
+    // Wallets — owner read only, client can create on signup
+    match /wallets/{uid} {
+      allow read: if isOwner(uid);
+      allow create: if isOwner(uid);
+      allow update, delete: if false;
+    }
+
+    // Wallet transactions — owner can read
+    match /wallet_transactions/{txnId} {
+      allow read: if isAuth() && (resource.data.uid == request.auth.uid || resource.data.uid == "platform");
+      allow write: if false; // Only server-side (Admin SDK)
+    }
+
+    // Subscriptions — owner read
+    match /subscriptions/{uid} {
+      allow read: if isOwner(uid);
+      allow write: if false; // Only server-side
+    }
+
+    // Consultations — participants can read and update (for WebRTC signaling)
+    match /consultations/{consultId} {
+      allow read: if isAuth() && (
+        resource.data.workerUid == request.auth.uid ||
+        resource.data.lawyerUid == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isAuth();
+      allow update: if isAuth() && (
+        resource.data.workerUid == request.auth.uid ||
+        resource.data.lawyerUid == request.auth.uid
+      );
+
+      // ICE candidates subcollections for WebRTC signaling
+      match /callerCandidates/{candidateId} {
+        allow read, write: if isAuth();
+      }
+      match /calleeCandidates/{candidateId} {
+        allow read, write: if isAuth();
+      }
+    }
+
+    // Ratings — public read, worker can create
+    match /ratings/{ratingId} {
+      allow read: if isAuth();
+      allow create: if isAuth() && request.resource.data.workerUid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // Knowledge Base Sources — authenticated read, server-only write
+    match /kb_sources/{sourceId} {
+      allow read: if isAuth();
+      allow write: if false; // Only server-side (Admin SDK)
+    }
+
+    // Knowledge Base Chunks — authenticated read, server-only write
+    match /kb_chunks/{chunkId} {
+      allow read: if isAuth();
+      allow write: if false; // Only server-side (Admin SDK)
+    }
+  }
+}

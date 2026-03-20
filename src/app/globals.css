@@ -1,0 +1,94 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f4f0ea;
+  --foreground: #14233a;
+  --brand-ink: #14233a;
+  --brand-accent: #b86443;
+  --brand-gold: #d3b17a;
+  --brand-border: rgba(20, 35, 58, 0.1);
+  --brand-surface: rgba(255, 255, 255, 0.84);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-lawbridge-sans);
+  --font-mono: var(--font-lawbridge-sans);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background:
+    linear-gradient(180deg, rgba(255, 247, 240, 0.72), rgba(244, 240, 234, 0.94)),
+    radial-gradient(circle at top left, rgba(184, 100, 67, 0.14), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(20, 35, 58, 0.18), transparent 34%),
+    url("/brand/app-background.png") center center / cover fixed no-repeat;
+  color: var(--foreground);
+  font-family: var(--font-lawbridge-sans), sans-serif;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+  background-size: 24px 24px;
+  opacity: 0.12;
+  pointer-events: none;
+  z-index: -1;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(244, 240, 234, 0.08));
+  pointer-events: none;
+  z-index: -1;
+}
+
+ a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+::selection {
+  background: rgba(184, 100, 67, 0.24);
+}
+
+.brand-surface {
+  background: var(--brand-surface);
+  border: 1px solid var(--brand-border);
+  box-shadow:
+    0 24px 80px rgba(20, 35, 58, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(18px);
+}
+
+.brand-hero {
+  background:
+    linear-gradient(180deg, rgba(20, 35, 58, 0.74), rgba(20, 35, 58, 0.24)),
+    radial-gradient(circle at top right, rgba(211, 177, 122, 0.18), transparent 30%),
+    url("/brand/app-background.png") center center / cover no-repeat;
+}
+
+.brand-title {
+  font-family: var(--font-lawbridge-serif), serif;
+}

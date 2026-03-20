@@ -1,0 +1,77 @@
+{
+  "common": {
+    "appName": "LawBridge",
+    "loading": "Đang tải...",
+    "error": "Đã xảy ra lỗi",
+    "confirm": "Xác nhận",
+    "cancel": "Hủy",
+    "back": "Quay lại",
+    "next": "Tiếp theo",
+    "save": "Lưu",
+    "login": "Đăng nhập",
+    "logout": "Đăng xuất",
+    "register": "Đăng ký"
+  },
+  "nav": {
+    "home": "Trang chủ",
+    "aiChat": "Hỏi AI Pháp luật",
+    "findLawyer": "Tìm Luật sư",
+    "myWallet": "Ví của tôi",
+    "profile": "Hồ sơ"
+  },
+  "home": {
+    "greeting": "Xin chào, {name}",
+    "pointsBalance": "Số dư điểm",
+    "points": "điểm",
+    "quickActions": "Dịch vụ nhanh",
+    "askAI": "Hỏi AI (Miễn phí)",
+    "askAIDesc": "Tìm hiểu quyền lợi của bạn",
+    "findLawyer": "Tìm Luật sư",
+    "findLawyerDesc": "Gọi thoại với luật sư",
+    "topUp": "Nạp điểm",
+    "topUpDesc": "Thanh toán tại cửa hàng tiện lợi"
+  },
+  "auth": {
+    "welcomeTitle": "Chào mừng đến LawBridge",
+    "welcomeDesc": "Tư vấn pháp lý cho lao động nước ngoài tại Đài Loan",
+    "phoneLogin": "Đăng nhập bằng Điện thoại",
+    "emailLogin": "Đăng nhập bằng Email",
+    "googleLogin": "Đăng nhập bằng Google",
+    "selectLanguage": "Chọn ngôn ngữ",
+    "selectRole": "Bạn là ai?",
+    "roleWorker": "Tôi cần trợ giúp pháp lý",
+    "roleLawyer": "Tôi là luật sư"
+  },
+  "lawyer": {
+    "available": "Sẵn sàng",
+    "busy": "Bận",
+    "offline": "Ngoại tuyến",
+    "rating": "Đánh giá",
+    "reviews": "đánh giá",
+    "specialties": "Chuyên môn",
+    "languages": "Ngôn ngữ phục vụ",
+    "ratePerMin": "{rate} điểm/phút",
+    "startConsult": "Bắt đầu tư vấn",
+    "confirmConsult": "Xác nhận? {points} điểm sẽ được giữ (30 phút)"
+  },
+  "wallet": {
+    "balance": "Điểm hiện tại",
+    "topUp": "Nạp tiền",
+    "history": "Lịch sử giao dịch",
+    "topUpOptions": "Chọn số tiền",
+    "paymentMethod": "Phương thức thanh toán",
+    "creditCard": "Thẻ tín dụng",
+    "convenienceStore": "Cửa hàng tiện lợi",
+    "convStoreDesc": "Lấy mã, thanh toán tại 7-11, FamilyMart, hoặc Hi-Life"
+  },
+  "consultation": {
+    "connecting": "Đang kết nối...",
+    "inProgress": "Đang tư vấn",
+    "timeRemaining": "Thời gian còn lại",
+    "recording": "Cuộc gọi đang được ghi âm",
+    "endCall": "Kết thúc tư vấn",
+    "rateExperience": "Đánh giá buổi tư vấn",
+    "completed": "Tư vấn hoàn tất",
+    "charged": "Đã trừ {points} điểm"
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "common": {
+    "appName": "LawBridge",
+    "loading": "กำลังโหลด...",
+    "error": "เกิดข้อผิดพลาด",
+    "confirm": "ยืนยัน",
+    "cancel": "ยกเลิก",
+    "back": "กลับ",
+    "next": "ถัดไป",
+    "save": "บันทึก",
+    "login": "เข้าสู่ระบบ",
+    "logout": "ออกจากระบบ",
+    "register": "สมัครสมาชิก"
+  },
+  "nav": {
+    "home": "หน้าแรก",
+    "aiChat": "ถาม AI กฎหมาย",
+    "findLawyer": "หาทนายความ",
+    "myWallet": "กระเป๋าเงิน",
+    "profile": "โปรไฟล์"
+  },
+  "home": {
+    "greeting": "สวัสดี {name}",
+    "pointsBalance": "ยอดคะแนน",
+    "points": "คะแนน",
+    "quickActions": "บริการด่วน",
+    "askAI": "ถาม AI (ฟรี)",
+    "askAIDesc": "เรียนรู้สิทธิ์ของคุณ",
+    "findLawyer": "หาทนายความ",
+    "findLawyerDesc": "โทรคุยกับทนายความ",
+    "topUp": "เติมคะแนน",
+    "topUpDesc": "จ่ายที่ร้านสะดวกซื้อ"
+  },
+  "auth": {
+    "welcomeTitle": "ยินดีต้อนรับสู่ LawBridge",
+    "welcomeDesc": "บริการให้คำปรึกษาทางกฎหมายสำหรับแรงงานต่างชาติในไต้หวัน",
+    "phoneLogin": "เข้าสู่ระบบด้วยโทรศัพท์",
+    "emailLogin": "เข้าสู่ระบบด้วย Email",
+    "googleLogin": "เข้าสู่ระบบด้วย Google",
+    "selectLanguage": "เลือกภาษาของคุณ",
+    "selectRole": "คุณคือใคร?",
+    "roleWorker": "ฉันต้องการความช่วยเหลือด้านกฎหมาย",
+    "roleLawyer": "ฉันเป็นทนายความ"
+  },
+  "lawyer": {
+    "available": "ว่าง",
+    "busy": "ไม่ว่าง",
+    "offline": "ออฟไลน์",
+    "rating": "คะแนน",
+    "reviews": "รีวิว",
+    "specialties": "ความเชี่ยวชาญ",
+    "languages": "ภาษาบริการ",
+    "ratePerMin": "{rate} คะแนน/นาที",
+    "startConsult": "เริ่มปรึกษา",
+    "confirmConsult": "ยืนยัน? จะหัก {points} คะแนน (30 นาที)"
+  },
+  "wallet": {
+    "balance": "คะแนนปัจจุบัน",
+    "topUp": "เติมเงิน",
+    "history": "ประวัติการทำรายการ",
+    "topUpOptions": "เลือกจำนวนเงิน",
+    "paymentMethod": "วิธีการชำระเงิน",
+    "creditCard": "บัตรเครดิต",
+    "convenienceStore": "ร้านสะดวกซื้อ",
+    "convStoreDesc": "รับรหัส แล้วจ่ายที่ 7-11, FamilyMart หรือ Hi-Life"
+  },
+  "consultation": {
+    "connecting": "กำลังเชื่อมต่อ...",
+    "inProgress": "กำลังปรึกษา",
+    "timeRemaining": "เวลาที่เหลือ",
+    "recording": "กำลังบันทึกการโทร",
+    "endCall": "จบการปรึกษา",
+    "rateExperience": "ให้คะแนนการปรึกษานี้",
+    "completed": "การปรึกษาเสร็จสิ้น",
+    "charged": "หักแล้ว {points} คะแนน"
+  }
+}

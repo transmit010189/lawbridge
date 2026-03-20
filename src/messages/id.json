@@ -1,0 +1,77 @@
+{
+  "common": {
+    "appName": "LawBridge",
+    "loading": "Memuat...",
+    "error": "Terjadi kesalahan",
+    "confirm": "Konfirmasi",
+    "cancel": "Batal",
+    "back": "Kembali",
+    "next": "Selanjutnya",
+    "save": "Simpan",
+    "login": "Masuk",
+    "logout": "Keluar",
+    "register": "Daftar"
+  },
+  "nav": {
+    "home": "Beranda",
+    "aiChat": "Tanya AI Hukum",
+    "findLawyer": "Cari Pengacara",
+    "myWallet": "Dompet Saya",
+    "profile": "Profil"
+  },
+  "home": {
+    "greeting": "Halo, {name}",
+    "pointsBalance": "Saldo Poin",
+    "points": "poin",
+    "quickActions": "Layanan Cepat",
+    "askAI": "Tanya AI (Gratis)",
+    "askAIDesc": "Pelajari hak-hak Anda",
+    "findLawyer": "Cari Pengacara",
+    "findLawyerDesc": "Panggilan suara dengan pengacara",
+    "topUp": "Isi Ulang Poin",
+    "topUpDesc": "Bayar di minimarket"
+  },
+  "auth": {
+    "welcomeTitle": "Selamat datang di LawBridge",
+    "welcomeDesc": "Konsultasi hukum untuk pekerja asing di Taiwan",
+    "phoneLogin": "Masuk dengan Telepon",
+    "emailLogin": "Masuk dengan Email",
+    "googleLogin": "Masuk dengan Google",
+    "selectLanguage": "Pilih bahasa Anda",
+    "selectRole": "Siapa Anda?",
+    "roleWorker": "Saya butuh bantuan hukum",
+    "roleLawyer": "Saya pengacara"
+  },
+  "lawyer": {
+    "available": "Tersedia",
+    "busy": "Sibuk",
+    "offline": "Offline",
+    "rating": "Rating",
+    "reviews": "ulasan",
+    "specialties": "Keahlian",
+    "languages": "Bahasa Layanan",
+    "ratePerMin": "{rate} poin/mnt",
+    "startConsult": "Mulai Konsultasi",
+    "confirmConsult": "Konfirmasi? {points} poin akan ditahan (30 menit)"
+  },
+  "wallet": {
+    "balance": "Poin Saat Ini",
+    "topUp": "Isi Ulang",
+    "history": "Riwayat Transaksi",
+    "topUpOptions": "Pilih Jumlah",
+    "paymentMethod": "Metode Pembayaran",
+    "creditCard": "Kartu Kredit",
+    "convenienceStore": "Minimarket",
+    "convStoreDesc": "Dapatkan kode, bayar di 7-11, FamilyMart, atau Hi-Life"
+  },
+  "consultation": {
+    "connecting": "Menghubungkan...",
+    "inProgress": "Konsultasi berlangsung",
+    "timeRemaining": "Waktu tersisa",
+    "recording": "Panggilan sedang direkam",
+    "endCall": "Akhiri Konsultasi",
+    "rateExperience": "Nilai konsultasi ini",
+    "completed": "Konsultasi Selesai",
+    "charged": "{points} poin dikenakan"
+  }
+}

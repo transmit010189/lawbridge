@@ -1,0 +1,77 @@
+{
+  "common": {
+    "appName": "LawBridge",
+    "loading": "Loading...",
+    "error": "An error occurred",
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "back": "Back",
+    "next": "Next",
+    "save": "Save",
+    "login": "Login",
+    "logout": "Logout",
+    "register": "Register"
+  },
+  "nav": {
+    "home": "Home",
+    "aiChat": "AI Legal Q&A",
+    "findLawyer": "Find Lawyer",
+    "myWallet": "My Wallet",
+    "profile": "Profile"
+  },
+  "home": {
+    "greeting": "Hello, {name}",
+    "pointsBalance": "Points Balance",
+    "points": "pts",
+    "quickActions": "Quick Actions",
+    "askAI": "Ask AI (Free)",
+    "askAIDesc": "Learn about your rights",
+    "findLawyer": "Find a Lawyer",
+    "findLawyerDesc": "Voice call with a licensed lawyer",
+    "topUp": "Top Up Points",
+    "topUpDesc": "Pay at convenience store"
+  },
+  "auth": {
+    "welcomeTitle": "Welcome to LawBridge",
+    "welcomeDesc": "Legal consultation for foreign workers in Taiwan",
+    "phoneLogin": "Login with Phone",
+    "emailLogin": "Login with Email",
+    "googleLogin": "Login with Google",
+    "selectLanguage": "Choose your language",
+    "selectRole": "Who are you?",
+    "roleWorker": "I need legal help",
+    "roleLawyer": "I am a lawyer"
+  },
+  "lawyer": {
+    "available": "Available",
+    "busy": "Busy",
+    "offline": "Offline",
+    "rating": "Rating",
+    "reviews": "reviews",
+    "specialties": "Specialties",
+    "languages": "Languages",
+    "ratePerMin": "{rate} pts/min",
+    "startConsult": "Start Consultation",
+    "confirmConsult": "Confirm? {points} points will be reserved (30 min)"
+  },
+  "wallet": {
+    "balance": "Current Points",
+    "topUp": "Top Up",
+    "history": "Transaction History",
+    "topUpOptions": "Choose Amount",
+    "paymentMethod": "Payment Method",
+    "creditCard": "Credit Card",
+    "convenienceStore": "Convenience Store",
+    "convStoreDesc": "Get a code, pay at 7-11, FamilyMart, or Hi-Life"
+  },
+  "consultation": {
+    "connecting": "Connecting...",
+    "inProgress": "Consultation in progress",
+    "timeRemaining": "Time remaining",
+    "recording": "Call is being recorded",
+    "endCall": "End Consultation",
+    "rateExperience": "Rate this consultation",
+    "completed": "Consultation Complete",
+    "charged": "{points} points charged"
+  }
+}

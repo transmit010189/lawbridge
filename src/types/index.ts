@@ -1,0 +1,127 @@
+// ============================================================
+// Core type definitions for LawBridge MVP
+// ============================================================
+
+// -- User roles --
+export type UserRole = "worker" | "lawyer" | "admin";
+
+// -- Supported languages --
+export type SupportedLocale = "zh-TW" | "en" | "id" | "vi" | "th";
+
+// -- User (Firestore: users/{uid}) --
+export interface User {
+  uid: string;
+  role: UserRole;
+  displayName: string;
+  email: string;
+  phone: string;
+  language: SupportedLocale;
+  nationality?: string;
+  status: "active" | "suspended" | "pending";
+  gps?: { lat: number; lng: number };
+  createdAt: string;
+  updatedAt: string;
+}
+
+// -- Lawyer Profile (Firestore: lawyer_profiles/{uid}) --
+export interface LawyerProfile {
+  uid: string;
+  fullName: string;
+  licenseNo: string;
+  licenseStatus: "pending" | "verified" | "rejected" | "offboarded";
+  specialties: string[];
+  serviceLanguages: SupportedLocale[];
+  ratingAvg: number;
+  ratingCount: number;
+  bio: string;
+  ratePerMinute: number; // points per minute
+  isOnline: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// -- Lawyer Verification (Firestore: lawyer_verifications/{id}) --
+export interface LawyerVerification {
+  uid: string;
+  ocrImagePath: string;
+  ocrRawText: string;
+  licenseNoSubmitted: string;
+  govCheckResult: "matched" | "manual_review" | "failed";
+  ndaAccepted: boolean;
+  reviewerId?: string;
+  reviewNotes?: string;
+  createdAt: string;
+  completedAt?: string;
+}
+
+// -- Wallet (Firestore: wallets/{uid}) --
+export interface Wallet {
+  uid: string;
+  pointsBalance: number;
+  currency: "TWD";
+  updatedAt: string;
+}
+
+// -- Transaction (Firestore: wallet_transactions/{txnId}) --
+export type TransactionType =
+  | "topup"
+  | "consult_charge"
+  | "subscription_charge"
+  | "lawyer_payout"
+  | "refund"
+  | "platform_fee";
+
+export interface WalletTransaction {
+  id: string;
+  uid: string;
+  type: TransactionType;
+  points: number; // positive = credit, negative = debit
+  amountTwd: number;
+  consultationId?: string;
+  paymentRef?: string;
+  gateway?: "ecpay" | "newebpay";
+  status: "pending" | "settled" | "failed";
+  createdAt: string;
+}
+
+// -- Subscription (Firestore: subscriptions/{uid}) --
+export interface Subscription {
+  uid: string;
+  plan: "free" | "pro";
+  status: "active" | "expired" | "cancelled";
+  aiDailyQuota: number;
+  startedAt: string;
+  expiresAt: string;
+}
+
+// -- Consultation (Firestore: consultations/{id}) --
+export interface Consultation {
+  id: string;
+  workerUid: string;
+  lawyerUid: string;
+  status: "requested" | "matched" | "in_progress" | "completed" | "cancelled";
+  mode: "audio" | "text";
+  startedAt?: string;
+  endedAt?: string;
+  durationSec: number;
+  chargePoints: number;
+  platformFeePoints: number;
+  lawyerPayoutPoints: number;
+  languageFrom: SupportedLocale;
+  languageTo: SupportedLocale;
+  recordingPath?: string;
+  recordingHash?: string;
+  createdAt: string;
+}
+
+// -- Rating (Firestore: ratings/{id}) --
+export interface Rating {
+  id: string;
+  consultationId: string;
+  workerUid: string;
+  lawyerUid: string;
+  stars: 1 | 2 | 3 | 4 | 5;
+  comment: string;
+  labels?: string[];
+  createdAt: string;
+}
