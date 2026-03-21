@@ -46,6 +46,7 @@ firebase-debug.log*
 
 # data (regenerable via scripts)
 /data/
+/raguse/
 
 # misc build artifacts
 /y

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { doc, setDoc, collection } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { Star, CheckCircle, Loader2 } from "lucide-react";
+import { useTranslation } from "@/hooks/useTranslation";
 import type { SupportedLocale } from "@/types";
 
 interface Props {
@@ -17,38 +18,6 @@ interface Props {
   onClose: () => void;
 }
 
-const en = {
-  title: "Call Ended",
-  duration: "Duration",
-  charged: "Points charged",
-  pts: "pts",
-  rateService: "Rate this consultation",
-  comment: "Leave a comment (optional)",
-  submit: "Submit Rating",
-  skip: "Skip",
-  thankYou: "Thank you for your feedback!",
-  min: "min",
-  sec: "sec",
-};
-
-const zh = {
-  title: "通話結束",
-  duration: "通話時長",
-  charged: "扣除點數",
-  pts: "點",
-  rateService: "為這次諮詢評分",
-  comment: "留下評論（選填）",
-  submit: "提交評分",
-  skip: "略過",
-  thankYou: "感謝你的回饋！",
-  min: "分",
-  sec: "秒",
-};
-
-function getCopy(locale: SupportedLocale) {
-  return locale === "zh-TW" ? zh : en;
-}
-
 export function PostCallRating({
   consultationId,
   workerUid,
@@ -59,7 +28,7 @@ export function PostCallRating({
   locale,
   onClose,
 }: Props) {
-  const copy = getCopy(locale);
+  const t = useTranslation(locale);
   const [stars, setStars] = useState(0);
   const [hoveredStar, setHoveredStar] = useState(0);
   const [comment, setComment] = useState("");
@@ -83,6 +52,12 @@ export function PostCallRating({
         comment: comment.trim(),
         createdAt: new Date().toISOString(),
       });
+      fetch("/api/lawyer/update-rating", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lawyerUid }),
+      }).catch(() => {});
+
       setSubmitted(true);
       setTimeout(onClose, 2000);
     } catch (err) {
@@ -98,30 +73,30 @@ export function PostCallRating({
         {submitted ? (
           <div className="flex flex-col items-center py-8 text-center">
             <CheckCircle className="h-12 w-12 text-emerald-500" />
-            <p className="mt-4 text-lg font-semibold text-slate-900">{copy.thankYou}</p>
+            <p className="mt-4 text-lg font-semibold text-slate-900">{t.rating.thankYou}</p>
           </div>
         ) : (
           <>
-            <h3 className="text-center text-lg font-semibold text-slate-900">{copy.title}</h3>
+            <h3 className="text-center text-lg font-semibold text-slate-900">{t.rating.title}</h3>
             <p className="mt-1 text-center text-sm text-slate-500">{lawyerName}</p>
 
             <div className="mt-5 grid grid-cols-2 gap-3">
               <div className="rounded-[1.2rem] bg-slate-50 px-4 py-3 text-center">
-                <p className="text-xs text-slate-400">{copy.duration}</p>
+                <p className="text-xs text-slate-400">{t.rating.duration}</p>
                 <p className="mt-1 text-lg font-semibold text-slate-900">
-                  {minutes}{copy.min} {seconds}{copy.sec}
+                  {minutes}{t.common.min} {seconds}{t.common.sec}
                 </p>
               </div>
               <div className="rounded-[1.2rem] bg-slate-50 px-4 py-3 text-center">
-                <p className="text-xs text-slate-400">{copy.charged}</p>
+                <p className="text-xs text-slate-400">{t.rating.charged}</p>
                 <p className="mt-1 text-lg font-semibold text-red-500">
-                  -{chargedPoints} {copy.pts}
+                  -{chargedPoints} {t.common.pts}
                 </p>
               </div>
             </div>
 
             <div className="mt-6">
-              <p className="text-center text-sm text-slate-600">{copy.rateService}</p>
+              <p className="text-center text-sm text-slate-600">{t.rating.rateService}</p>
               <div className="mt-3 flex justify-center gap-2">
                 {[1, 2, 3, 4, 5].map((n) => (
                   <button
@@ -147,7 +122,7 @@ export function PostCallRating({
             <textarea
               value={comment}
               onChange={(e) => setComment(e.target.value)}
-              placeholder={copy.comment}
+              placeholder={t.rating.comment}
               rows={2}
               className="mt-4 w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-[rgba(184,100,67,0.45)]"
             />
@@ -158,7 +133,7 @@ export function PostCallRating({
                 onClick={onClose}
                 className="flex-1 rounded-[1.3rem] bg-slate-100 px-4 py-3 text-sm font-medium text-slate-600 transition hover:bg-slate-200"
               >
-                {copy.skip}
+                {t.rating.skip}
               </button>
               <button
                 type="button"
@@ -167,7 +142,7 @@ export function PostCallRating({
                 className="flex-1 rounded-[1.3rem] bg-[var(--brand-ink)] px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-50"
               >
                 {submitting ? <Loader2 className="inline h-4 w-4 animate-spin" /> : null}
-                {copy.submit}
+                {t.rating.submit}
               </button>
             </div>
           </>

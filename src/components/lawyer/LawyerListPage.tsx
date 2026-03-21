@@ -3,9 +3,11 @@
 import { useEffect, useState } from "react";
 import { collection, getDocs, orderBy, query, where, doc, setDoc, updateDoc } from "firebase/firestore";
 import { BadgeCheck, Globe, Loader2, Phone, Search, Star, Wifi, WifiOff } from "lucide-react";
+import { SkeletonList } from "@/components/Skeleton";
 import { db } from "@/lib/firebase/client";
 import { useAuthContext } from "@/components/auth/AuthProvider";
 import { localeNames } from "@/lib/i18n";
+import { useTranslation } from "@/hooks/useTranslation";
 import { CertificateUpload } from "./CertificateUpload";
 import { QRCodeScanner } from "./QRCodeScanner";
 import type { LawyerProfile, SupportedLocale, UserRole } from "@/types";
@@ -64,124 +66,15 @@ const DEMO_LAWYERS: LawyerProfile[] = [
   },
 ];
 
-const en = {
-  workerTitle: "Lawyer Help",
-  workerSubtitle:
-    "Browse lawyer profiles and specialties. Click \"Start Call\" to begin a consultation.",
-  search: "Search by name, specialty, or language...",
-  available: "Available",
-  offline: "Offline",
-  perMinute: "pts / min",
-  reviews: "reviews",
-  noResult: "No matching lawyers found.",
-  languages: "Languages",
-  demo: "Showing demo lawyer data until real profiles are available in Firestore.",
-  verified: "Verified",
-  workerNoticeTitle: "How it works",
-  workerNoticeItems: [
-    "Browse verified lawyer profiles and their specialties.",
-    "Click \"Start Call\" to initiate a voice consultation (points will be charged per minute).",
-    "After the call, you can rate the lawyer's service.",
-  ],
-  lawyerTitle: "Lawyer Desk",
-  lawyerSubtitle: "Manage your availability, upload certificates, and view tools.",
-  lawyerNoticeTitle: "Rights and obligations",
-  lawyerNoticeItems: [
-    "Confirm the service boundary before providing any legal opinion.",
-    "Do not imply a formal representation relationship before the required steps are complete.",
-    "Keep confidentiality and personal-data handling aligned with applicable rules.",
-  ],
-  lawyerScopeTitle: "Current implementation",
-  lawyerScopeItems: [
-    "Toggle online/offline status to receive calls.",
-    "Upload your practicing certificate for verification.",
-    "Use QR code scanner for client document processing.",
-  ],
-  profileOnly: "Profile browsing only. Direct calls are not live yet.",
-  startCall: "Start Call",
-  goOnline: "Go Online",
-  goOffline: "Go Offline",
-  onlineStatus: "You are online — workers can call you.",
-  offlineStatus: "You are offline — no incoming calls.",
-  lawyerProfile: "My Lawyer Profile",
-  editProfile: "Edit Profile",
-  saveProfile: "Save",
-  fullName: "Full Name",
-  licenseNo: "License No.",
-  bio: "Bio / Introduction",
-  specialties: "Specialties (comma separated)",
-  ratePerMinute2: "Rate (pts/min)",
-  serviceLanguages2: "Service Languages",
-  profileSaved: "Profile saved!",
-  createProfile: "Create Profile",
-  noProfile: "You haven't created a lawyer profile yet. Fill in the form below to get started.",
-};
-
-const zh = {
-  workerTitle: "律師協助",
-  workerSubtitle: "瀏覽律師資料與專長，點擊「開始通話」即可發起語音諮詢。",
-  search: "輸入姓名、專長或語言...",
-  available: "可受理",
-  offline: "離線",
-  perMinute: "點 / 分",
-  reviews: "則評價",
-  noResult: "找不到符合條件的律師。",
-  languages: "服務語言",
-  demo: "目前顯示示範律師資料；真實資料加入後會自動替換。",
-  verified: "已驗證",
-  workerNoticeTitle: "使用說明",
-  workerNoticeItems: [
-    "瀏覽已驗證的律師資料與專長。",
-    "點擊「開始通話」發起語音諮詢（將按分鐘扣點數）。",
-    "通話結束後可為律師服務評分。",
-  ],
-  lawyerTitle: "律師工作台",
-  lawyerSubtitle: "管理上線狀態、上傳證書、使用工具。",
-  lawyerNoticeTitle: "權利義務聲明",
-  lawyerNoticeItems: [
-    "提供法律意見前，請先確認服務邊界與執業責任。",
-    "未完成必要程序前，不得讓使用者誤認已成立正式委任關係。",
-    "請依適用規範處理保密義務與個資。",
-  ],
-  lawyerScopeTitle: "功能說明",
-  lawyerScopeItems: [
-    "切換上線/離線狀態以接收通話。",
-    "上傳執業證書以供審核驗證。",
-    "使用 QR Code 掃描器處理委託文件。",
-  ],
-  profileOnly: "目前僅提供資料瀏覽與說明，尚未開放直接通話。",
-  startCall: "開始通話",
-  goOnline: "上線",
-  goOffline: "離線",
-  onlineStatus: "你目前為上線狀態 — 移工可以撥打諮詢電話。",
-  offlineStatus: "你目前為離線狀態 — 不會收到來電。",
-  lawyerProfile: "我的律師檔案",
-  editProfile: "編輯資料",
-  saveProfile: "儲存",
-  fullName: "姓名",
-  licenseNo: "證號",
-  bio: "簡介 / 自我介紹",
-  specialties: "專長（逗號分隔）",
-  ratePerMinute2: "費率（點/分鐘）",
-  serviceLanguages2: "服務語言",
-  profileSaved: "資料已儲存！",
-  createProfile: "建立檔案",
-  noProfile: "你尚未建立律師檔案。請填寫以下表單開始使用。",
-};
-
-function getCopy(locale: SupportedLocale) {
-  return locale === "zh-TW" ? zh : en;
-}
-
 export function LawyerListPage({ locale, viewerRole, onStartCall }: Props) {
-  const copy = getCopy(locale);
   if (viewerRole === "lawyer") {
-    return <LawyerWorkspace copy={copy} locale={locale} />;
+    return <LawyerWorkspace locale={locale} />;
   }
-  return <WorkerLawyerDirectory copy={copy} onStartCall={onStartCall} />;
+  return <WorkerLawyerDirectory locale={locale} onStartCall={onStartCall} />;
 }
 
-function WorkerLawyerDirectory({ copy, onStartCall }: { copy: typeof zh; onStartCall?: (lawyerUid: string, lawyerName: string, rate: number) => void }) {
+function WorkerLawyerDirectory({ locale, onStartCall }: { locale: SupportedLocale; onStartCall?: (lawyerUid: string, lawyerName: string, rate: number) => void }) {
+  const t = useTranslation(locale);
   const [lawyers, setLawyers] = useState<LawyerProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -232,8 +125,13 @@ function WorkerLawyerDirectory({ copy, onStartCall }: { copy: typeof zh; onStart
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-24">
-        <Loader2 className="h-8 w-8 animate-spin text-[var(--brand-accent)]" />
+      <div className="mx-auto max-w-6xl space-y-5">
+        <div className="animate-pulse rounded-[1.6rem] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="h-6 w-40 rounded-lg bg-slate-100" />
+          <div className="mt-3 h-4 w-64 rounded-lg bg-slate-100" />
+          <div className="mt-5 h-11 w-full rounded-[1.3rem] bg-slate-100" />
+        </div>
+        <SkeletonList count={4} />
       </div>
     );
   }
@@ -242,32 +140,32 @@ function WorkerLawyerDirectory({ copy, onStartCall }: { copy: typeof zh; onStart
     <div className="mx-auto max-w-6xl space-y-5">
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="rounded-[1.6rem] border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="text-2xl font-semibold text-slate-900">{copy.workerTitle}</h2>
-          <p className="mt-2 text-sm leading-7 text-slate-500">{copy.workerSubtitle}</p>
+          <h2 className="text-2xl font-semibold text-slate-900">{t.lawyerList.workerTitle}</h2>
+          <p className="mt-2 text-sm leading-7 text-slate-500">{t.lawyerList.workerSubtitle}</p>
           <div className="relative mt-5">
             <Search className="pointer-events-none absolute left-4 top-3.5 h-5 w-5 text-slate-400" />
             <input
               type="text"
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder={copy.search}
+              placeholder={t.lawyerList.search}
               className="w-full rounded-[1.3rem] border border-slate-200 px-12 py-3 text-sm outline-none transition focus:border-[rgba(184,100,67,0.45)] focus:ring-4 focus:ring-[rgba(184,100,67,0.08)]"
             />
           </div>
-          {isDemo ? <p className="mt-4 rounded-[1.2rem] bg-amber-50 px-4 py-3 text-sm text-amber-700">{copy.demo}</p> : null}
+          {isDemo ? <p className="mt-4 rounded-[1.2rem] bg-amber-50 px-4 py-3 text-sm text-amber-700">{t.lawyerList.demo}</p> : null}
         </div>
 
-        <InfoPanel title={copy.workerNoticeTitle} items={copy.workerNoticeItems} />
+        <InfoPanel title={t.lawyerList.workerNoticeTitle} items={t.lawyerList.workerNoticeItems} />
       </div>
 
       {filteredLawyers.length === 0 ? (
         <div className="rounded-[1.6rem] border border-slate-200 bg-white px-6 py-12 text-center text-sm text-slate-500 shadow-sm">
-          {copy.noResult}
+          {t.lawyerList.noResult}
         </div>
       ) : (
         <div className="grid gap-4 xl:grid-cols-2">
           {filteredLawyers.map((lawyer) => (
-            <LawyerCard key={lawyer.uid} lawyer={lawyer} copy={copy} onStartCall={onStartCall} />
+            <LawyerCard key={lawyer.uid} lawyer={lawyer} locale={locale} onStartCall={onStartCall} />
           ))}
         </div>
       )}
@@ -275,8 +173,9 @@ function WorkerLawyerDirectory({ copy, onStartCall }: { copy: typeof zh; onStart
   );
 }
 
-function LawyerWorkspace({ copy, locale }: { copy: typeof zh; locale: SupportedLocale }) {
+function LawyerWorkspace({ locale }: { locale: SupportedLocale }) {
   const { user } = useAuthContext();
+  const t = useTranslation(locale);
   const [profile, setProfile] = useState<LawyerProfile | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [isOnline, setIsOnline] = useState(false);
@@ -284,7 +183,6 @@ function LawyerWorkspace({ copy, locale }: { copy: typeof zh; locale: SupportedL
   const [editing, setEditing] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  // Edit form state
   const [formName, setFormName] = useState("");
   const [formLicense, setFormLicense] = useState("");
   const [formBio, setFormBio] = useState("");
@@ -312,7 +210,6 @@ function LawyerWorkspace({ copy, locale }: { copy: typeof zh; locale: SupportedL
           setFormRate(data.ratePerMinute);
           setFormLanguages(data.serviceLanguages);
         } else {
-          // No profile yet, pre-fill with user display name
           setFormName(user.displayName || "");
           setEditing(true);
         }
@@ -382,8 +279,8 @@ function LawyerWorkspace({ copy, locale }: { copy: typeof zh; locale: SupportedL
         <span className="inline-flex rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs uppercase tracking-[0.32em] text-white/78">
           LawBridge
         </span>
-        <h2 className="brand-title mt-4 text-3xl font-semibold">{copy.lawyerTitle}</h2>
-        <p className="mt-3 max-w-2xl text-sm leading-7 text-white/84">{copy.lawyerSubtitle}</p>
+        <h2 className="brand-title mt-4 text-3xl font-semibold">{t.lawyerList.lawyerTitle}</h2>
+        <p className="mt-3 max-w-2xl text-sm leading-7 text-white/84">{t.lawyerList.lawyerSubtitle}</p>
       </div>
 
       {/* Online/Offline Toggle */}
@@ -400,8 +297,8 @@ function LawyerWorkspace({ copy, locale }: { copy: typeof zh; locale: SupportedL
               </div>
             )}
             <div>
-              <p className="font-semibold text-slate-900">{isOnline ? copy.goOnline : copy.goOffline}</p>
-              <p className="text-sm text-slate-500">{isOnline ? copy.onlineStatus : copy.offlineStatus}</p>
+              <p className="font-semibold text-slate-900">{isOnline ? t.lawyerList.goOnline : t.lawyerList.goOffline}</p>
+              <p className="text-sm text-slate-500">{isOnline ? t.lawyerList.onlineStatus : t.lawyerList.offlineStatus}</p>
             </div>
           </div>
           <button
@@ -415,7 +312,7 @@ function LawyerWorkspace({ copy, locale }: { copy: typeof zh; locale: SupportedL
             } disabled:opacity-50`}
           >
             {toggling ? <Loader2 className="inline h-4 w-4 animate-spin" /> : null}
-            {isOnline ? copy.goOffline : copy.goOnline}
+            {isOnline ? t.lawyerList.goOffline : t.lawyerList.goOnline}
           </button>
         </div>
       </div>
@@ -423,40 +320,40 @@ function LawyerWorkspace({ copy, locale }: { copy: typeof zh; locale: SupportedL
       {/* Profile Editor */}
       <div className="rounded-[1.6rem] border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex items-center justify-between">
-          <p className="text-sm uppercase tracking-[0.28em] text-slate-400">{copy.lawyerProfile}</p>
+          <p className="text-sm uppercase tracking-[0.28em] text-slate-400">{t.lawyerList.lawyerProfile}</p>
           {profile && !editing ? (
-            <button type="button" onClick={() => setEditing(true)} className="text-sm text-[var(--brand-accent)] hover:underline">{copy.editProfile}</button>
+            <button type="button" onClick={() => setEditing(true)} className="text-sm text-[var(--brand-accent)] hover:underline">{t.lawyerList.editProfile}</button>
           ) : null}
         </div>
 
         {!profile && !editing ? (
-          <p className="mt-4 text-sm text-slate-500">{copy.noProfile}</p>
+          <p className="mt-4 text-sm text-slate-500">{t.lawyerList.noProfile}</p>
         ) : null}
 
         {editing ? (
           <div className="mt-4 space-y-4">
             <div>
-              <label className="block text-xs font-medium text-slate-500">{copy.fullName}</label>
+              <label className="block text-xs font-medium text-slate-500">{t.lawyerList.fullName}</label>
               <input type="text" value={formName} onChange={(e) => setFormName(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-[rgba(184,100,67,0.45)]" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-500">{copy.licenseNo}</label>
+              <label className="block text-xs font-medium text-slate-500">{t.lawyerList.licenseNo}</label>
               <input type="text" value={formLicense} onChange={(e) => setFormLicense(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-[rgba(184,100,67,0.45)]" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-500">{copy.bio}</label>
+              <label className="block text-xs font-medium text-slate-500">{t.lawyerList.bio}</label>
               <textarea value={formBio} onChange={(e) => setFormBio(e.target.value)} rows={3} className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-[rgba(184,100,67,0.45)]" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-500">{copy.specialties}</label>
-              <input type="text" value={formSpecialties} onChange={(e) => setFormSpecialties(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-[rgba(184,100,67,0.45)]" placeholder={locale === "zh-TW" ? "勞動契約, 職災補償, 外籍勞工" : "Labor contracts, Workplace injury, Foreign workers"} />
+              <label className="block text-xs font-medium text-slate-500">{t.lawyerList.specialties}</label>
+              <input type="text" value={formSpecialties} onChange={(e) => setFormSpecialties(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-[rgba(184,100,67,0.45)]" placeholder={t.lawyerList.specialtiesPlaceholder} />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-500">{copy.ratePerMinute2}</label>
+              <label className="block text-xs font-medium text-slate-500">{t.lawyerList.ratePerMinute}</label>
               <input type="number" min={1} max={100} value={formRate} onChange={(e) => setFormRate(Number(e.target.value))} className="mt-1 w-32 rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-[rgba(184,100,67,0.45)]" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-500">{copy.serviceLanguages2}</label>
+              <label className="block text-xs font-medium text-slate-500">{t.lawyerList.serviceLanguages}</label>
               <div className="mt-2 flex flex-wrap gap-2">
                 {allLanguages.map((lang) => (
                   <button
@@ -472,11 +369,11 @@ function LawyerWorkspace({ copy, locale }: { copy: typeof zh; locale: SupportedL
             </div>
             <div className="flex items-center gap-3">
               <button type="button" onClick={handleSaveProfile} className="rounded-[1.3rem] bg-[var(--brand-ink)] px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800">
-                {profile ? copy.saveProfile : copy.createProfile}
+                {profile ? t.lawyerList.saveProfile : t.lawyerList.createProfile}
               </button>
               {profile ? (
                 <button type="button" onClick={() => setEditing(false)} className="text-sm text-slate-500 hover:text-slate-700">
-                  {locale === "zh-TW" ? "取消" : "Cancel"}
+                  {t.common.cancel}
                 </button>
               ) : null}
             </div>
@@ -486,9 +383,9 @@ function LawyerWorkspace({ copy, locale }: { copy: typeof zh; locale: SupportedL
             <div className="flex items-center gap-3">
               <p className="text-xl font-semibold text-slate-900">{profile.fullName}</p>
               {profile.licenseStatus === "verified" ? (
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700"><BadgeCheck className="h-3.5 w-3.5" />{copy.verified}</span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700"><BadgeCheck className="h-3.5 w-3.5" />{t.lawyerList.verified}</span>
               ) : (
-                <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-700">{locale === "zh-TW" ? "審核中" : "Pending"}</span>
+                <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-700">{t.lawyerList.pending}</span>
               )}
             </div>
             <p className="text-sm text-slate-400">{profile.licenseNo}</p>
@@ -496,30 +393,30 @@ function LawyerWorkspace({ copy, locale }: { copy: typeof zh; locale: SupportedL
             <div className="flex flex-wrap gap-2">
               {profile.specialties.map((s) => <span key={s} className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600">{s}</span>)}
             </div>
-            <p className="text-sm font-medium text-[var(--brand-accent)]">{profile.ratePerMinute} {copy.perMinute}</p>
+            <p className="text-sm font-medium text-[var(--brand-accent)]">{profile.ratePerMinute} {t.lawyerList.perMinute}</p>
           </div>
         ) : null}
 
         {saved ? (
-          <div className="mt-4 rounded-[1.2rem] bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{copy.profileSaved}</div>
+          <div className="mt-4 rounded-[1.2rem] bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{t.lawyerList.profileSaved}</div>
         ) : null}
       </div>
 
       <div className="grid gap-5 lg:grid-cols-2">
-        <InfoPanel title={copy.lawyerNoticeTitle} items={copy.lawyerNoticeItems} />
-        <InfoPanel title={copy.lawyerScopeTitle} items={copy.lawyerScopeItems} />
+        <InfoPanel title={t.lawyerList.lawyerNoticeTitle} items={t.lawyerList.lawyerNoticeItems} />
+        <InfoPanel title={t.lawyerList.lawyerScopeTitle} items={t.lawyerList.lawyerScopeItems} />
       </div>
 
-      {/* Certificate Upload & QR Scanner */}
       <div className="grid gap-5 lg:grid-cols-2">
-        <CertificateUpload />
+        <CertificateUpload locale={locale} />
         <QRCodeScanner />
       </div>
     </div>
   );
 }
 
-function LawyerCard({ lawyer, copy, onStartCall }: { lawyer: LawyerProfile; copy: typeof zh; onStartCall?: (lawyerUid: string, lawyerName: string, rate: number) => void }) {
+function LawyerCard({ lawyer, locale, onStartCall }: { lawyer: LawyerProfile; locale: SupportedLocale; onStartCall?: (lawyerUid: string, lawyerName: string, rate: number) => void }) {
+  const t = useTranslation(locale);
   return (
     <div className="rounded-[1.6rem] border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -528,10 +425,10 @@ function LawyerCard({ lawyer, copy, onStartCall }: { lawyer: LawyerProfile; copy
             <h3 className="text-xl font-semibold text-slate-900">{lawyer.fullName}</h3>
             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700">
               <BadgeCheck className="h-3.5 w-3.5" />
-              {copy.verified}
+              {t.lawyerList.verified}
             </span>
             <span className={`rounded-full px-3 py-1 text-xs font-medium ${lawyer.isOnline ? "bg-sky-100 text-sky-700" : "bg-slate-100 text-slate-500"}`}>
-              {lawyer.isOnline ? copy.available : copy.offline}
+              {lawyer.isOnline ? t.lawyerList.available : t.lawyerList.offline}
             </span>
           </div>
           <p className="mt-2 text-sm text-slate-400">{lawyer.licenseNo}</p>
@@ -543,8 +440,8 @@ function LawyerCard({ lawyer, copy, onStartCall }: { lawyer: LawyerProfile; copy
             <Star className="h-4 w-4 fill-current" />
             <span className="font-semibold text-slate-800">{lawyer.ratingAvg}</span>
           </div>
-          <p className="mt-1 text-xs text-slate-500">{lawyer.ratingCount} {copy.reviews}</p>
-          <p className="mt-3 text-sm font-medium text-[var(--brand-accent)]">{lawyer.ratePerMinute} {copy.perMinute}</p>
+          <p className="mt-1 text-xs text-slate-500">{lawyer.ratingCount} {t.lawyerList.reviews}</p>
+          <p className="mt-3 text-sm font-medium text-[var(--brand-accent)]">{lawyer.ratePerMinute} {t.lawyerList.perMinute}</p>
         </div>
       </div>
 
@@ -560,7 +457,7 @@ function LawyerCard({ lawyer, copy, onStartCall }: { lawyer: LawyerProfile; copy
         <div className="flex items-start gap-2 text-sm text-slate-500">
           <Globe className="mt-0.5 h-4 w-4 shrink-0" />
           <div className="flex flex-wrap gap-2">
-            <span>{copy.languages}:</span>
+            <span>{t.lawyerList.languages}:</span>
             {lawyer.serviceLanguages.map((language) => (
               <span key={language} className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs text-slate-600">
                 {localeNames[language as SupportedLocale] || language}
@@ -576,11 +473,11 @@ function LawyerCard({ lawyer, copy, onStartCall }: { lawyer: LawyerProfile; copy
             className="inline-flex items-center gap-2 rounded-[1.2rem] bg-emerald-600 px-5 py-3 text-sm font-medium text-white transition hover:bg-emerald-700"
           >
             <Phone className="h-4 w-4" />
-            {copy.startCall}
+            {t.lawyerList.startCall}
           </button>
         ) : (
           <div className="rounded-[1.2rem] bg-slate-50 px-4 py-3 text-xs leading-6 text-slate-500">
-            {lawyer.isOnline ? copy.profileOnly : copy.offline}
+            {lawyer.isOnline ? t.lawyerList.profileOnly : t.lawyerList.offline}
           </div>
         )}
       </div>

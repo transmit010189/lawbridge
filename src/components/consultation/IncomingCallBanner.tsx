@@ -11,6 +11,7 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { Phone, PhoneOff } from "lucide-react";
+import { useTranslation } from "@/hooks/useTranslation";
 import type { SupportedLocale } from "@/types";
 
 interface IncomingCall {
@@ -25,30 +26,11 @@ interface Props {
   onAccept: (call: IncomingCall) => void;
 }
 
-const en = {
-  incoming: "Incoming call",
-  accept: "Accept",
-  decline: "Decline",
-  perMin: "pts/min",
-};
-
-const zh = {
-  incoming: "來電通知",
-  accept: "接聽",
-  decline: "拒接",
-  perMin: "點/分",
-};
-
-function getCopy(locale: SupportedLocale) {
-  return locale === "zh-TW" ? zh : en;
-}
-
 export function IncomingCallBanner({ lawyerUid, locale, onAccept }: Props) {
-  const copy = getCopy(locale);
+  const t = useTranslation(locale);
   const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
 
   useEffect(() => {
-    // Listen for consultations where this lawyer is the target and status is "requested"
     const q = query(
       collection(db, "consultations"),
       where("lawyerUid", "==", lawyerUid),
@@ -65,7 +47,6 @@ export function IncomingCallBanner({ lawyerUid, locale, onAccept }: Props) {
           ratePerMinute: data.ratePerMinute || 10,
         });
       });
-      // Show the most recent incoming call
       setIncomingCall(calls.length > 0 ? calls[calls.length - 1] : null);
     });
 
@@ -95,9 +76,9 @@ export function IncomingCallBanner({ lawyerUid, locale, onAccept }: Props) {
               <Phone className="h-6 w-6 text-emerald-600 animate-pulse" />
             </div>
             <div>
-              <p className="font-semibold text-slate-900">{copy.incoming}</p>
+              <p className="font-semibold text-slate-900">{t.incomingCall.incoming}</p>
               <p className="text-sm text-slate-500">
-                {incomingCall.ratePerMinute} {copy.perMin}
+                {incomingCall.ratePerMinute} {t.incomingCall.perMin}
               </p>
             </div>
           </div>
@@ -107,7 +88,7 @@ export function IncomingCallBanner({ lawyerUid, locale, onAccept }: Props) {
               type="button"
               onClick={handleDecline}
               className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100 text-red-600 transition hover:bg-red-200"
-              title={copy.decline}
+              title={t.incomingCall.decline}
             >
               <PhoneOff className="h-5 w-5" />
             </button>
@@ -119,7 +100,7 @@ export function IncomingCallBanner({ lawyerUid, locale, onAccept }: Props) {
               }}
               className="rounded-full bg-emerald-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-emerald-700"
             >
-              {copy.accept}
+              {t.incomingCall.accept}
             </button>
           </div>
         </div>

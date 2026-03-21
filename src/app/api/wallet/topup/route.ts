@@ -1,52 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
-import { adminDb } from "@/lib/firebase/admin";
-import { FieldValue } from "firebase-admin/firestore";
+import {
+  RequestAuthError,
+  requireAuthenticatedUser,
+} from "@/lib/auth/requireUser";
 
 export async function POST(req: NextRequest) {
   try {
-    const { uid, amount } = await req.json();
+    const authUser = await requireAuthenticatedUser(req);
+    const { uid } = (await req.json()) as { uid?: string };
 
-    if (!uid || !amount || amount <= 0) {
-      return NextResponse.json({ error: "Invalid parameters" }, { status: 400 });
+    if (!uid || uid !== authUser.uid) {
+      return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
     }
 
-    const walletRef = adminDb.doc(`wallets/${uid}`);
-    const now = new Date().toISOString();
-
-    await adminDb.runTransaction(async (txn) => {
-      const walletSnap = await txn.get(walletRef);
-
-      if (walletSnap.exists) {
-        txn.update(walletRef, {
-          pointsBalance: FieldValue.increment(amount),
-          updatedAt: now,
-        });
-      } else {
-        txn.set(walletRef, {
-          uid,
-          pointsBalance: amount,
-          currency: "TWD",
-          updatedAt: now,
-        });
-      }
-
-      const txnRef = adminDb.collection("wallet_transactions").doc();
-      txn.set(txnRef, {
-        id: txnRef.id,
-        uid,
-        type: "topup",
-        points: amount,
-        amountTwd: amount,
-        status: "settled",
-        createdAt: now,
-      });
-    });
-
-    const updatedWallet = await walletRef.get();
-    const newBalance = updatedWallet.data()?.pointsBalance ?? 0;
-
-    return NextResponse.json({ success: true, newBalance });
+    return NextResponse.json(
+      {
+        error: "DIRECT_TOPUP_DISABLED",
+        message:
+          "Direct wallet top-up is disabled. Use the NewebPay gateway route instead.",
+      },
+      { status: 410 }
+    );
   } catch (err) {
+    if (err instanceof RequestAuthError) {
+      return NextResponse.json({ error: err.message }, { status: err.status });
+    }
+
     console.error("Top-up error:", err);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Internal error" },

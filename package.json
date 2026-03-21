@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "rag:crawl:wdafaq": "npx tsx scripts/crawl-wda-faq.ts",
     "rag:crawl:wdapolicy": "npx tsx scripts/crawl-wda-policies.ts",
+    "rag:attachments": "npx tsx scripts/extract-rag-attachments.ts",
     "rag:build": "npx tsx scripts/build-rag-corpus.ts",
     "rag:upload": "npx tsx scripts/embed-and-upload.ts",
     "rag:prune": "npx tsx scripts/prune-rag-docs.ts"

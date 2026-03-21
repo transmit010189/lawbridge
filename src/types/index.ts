@@ -71,6 +71,10 @@ export type TransactionType =
   | "refund"
   | "platform_fee";
 
+export type PaymentGateway = "ecpay" | "newebpay";
+export type PaymentMethod = "card" | "cvs";
+export type TransactionStatus = "pending" | "settled" | "failed";
+
 export interface WalletTransaction {
   id: string;
   uid: string;
@@ -79,8 +83,16 @@ export interface WalletTransaction {
   amountTwd: number;
   consultationId?: string;
   paymentRef?: string;
-  gateway?: "ecpay" | "newebpay";
-  status: "pending" | "settled" | "failed";
+  gateway?: PaymentGateway;
+  paymentMethod?: PaymentMethod;
+  status: TransactionStatus;
+  paymentCode?: string;
+  paymentInstructions?: string;
+  paymentExpiresAt?: string;
+  gatewayTradeNo?: string;
+  gatewayMessage?: string;
+  settledAt?: string;
+  updatedAt?: string;
   createdAt: string;
 }
 
@@ -101,6 +113,7 @@ export interface Consultation {
   lawyerUid: string;
   status: "requested" | "matched" | "in_progress" | "completed" | "cancelled";
   mode: "audio" | "text";
+  ratePerMinute?: number;
   startedAt?: string;
   endedAt?: string;
   durationSec: number;
@@ -111,7 +124,24 @@ export interface Consultation {
   languageTo: SupportedLocale;
   recordingPath?: string;
   recordingHash?: string;
+  recordingCount?: number;
+  recordingUpdatedAt?: string;
+  recordingLatestPath?: string;
   createdAt: string;
+}
+
+export interface ConsultationRecording {
+  id: string;
+  consultationId: string;
+  storagePath: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  sha256: string;
+  uploadedAt: string;
+  uploadedByUid: string;
+  uploadedByRole: "worker" | "lawyer";
+  durationSec?: number;
 }
 
 // -- Rating (Firestore: ratings/{id}) --

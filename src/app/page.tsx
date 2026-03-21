@@ -13,138 +13,36 @@ import {
   User,
   Wallet,
 } from "lucide-react";
-import { doc, getDoc, collection, query, where, orderBy, getDocs, limit } from "firebase/firestore";
+import { collection, query, where, orderBy, getDocs, limit } from "firebase/firestore";
 import { AuthProvider, useAuthContext } from "@/components/auth/AuthProvider";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { LoginPage } from "@/components/auth/LoginPage";
 import { BrandLogo } from "@/components/branding/BrandLogo";
 import { LocaleMenu } from "@/components/branding/LocaleMenu";
 import { AiChatPage } from "@/components/consultation/AiChatPage";
 import { CallWindow } from "@/components/consultation/CallWindow";
+import { ConsultationRecordingPanel } from "@/components/consultation/ConsultationRecordingPanel";
 import { IncomingCallBanner } from "@/components/consultation/IncomingCallBanner";
 import { PostCallRating } from "@/components/consultation/PostCallRating";
 import { LawyerDashboard } from "@/components/lawyer/LawyerDashboard";
 import { LawyerListPage } from "@/components/lawyer/LawyerListPage";
 import { LawyerWalletPage } from "@/components/wallet/LawyerWalletPage";
 import { WalletPage } from "@/components/wallet/WalletPage";
+import { authenticatedFetch } from "@/lib/api/authenticatedFetch";
 import { db } from "@/lib/firebase/client";
 import { locales } from "@/lib/i18n";
+import { useTranslation, interpolate } from "@/hooks/useTranslation";
 import type { SupportedLocale, Consultation } from "@/types";
 
 type Tab = "home" | "ai" | "lawyers" | "wallet" | "profile";
 
-const en = {
-  loading: "Preparing LawBridge...",
-  signOut: "Sign out",
-  home: "Home",
-  ai: "RAG Legal AI",
-  lawyersWorker: "Lawyer Help",
-  lawyersLawyer: "Lawyer Desk",
-  wallet: "Wallet",
-  profile: "Profile",
-  roleWorker: "Need legal help",
-  roleLawyer: "Lawyer account",
-  eyebrow: "LawBridge",
-  workerTitle: "Search the regulations first, then decide whether to speak with a lawyer.",
-  workerBody:
-    "AI answers are reference only. Keep your original files and move to a lawyer when the case becomes specific.",
-  lawyerTitle: "Review the platform notice first, then prepare the lawyer workspace.",
-  lawyerBody:
-    "This public build focuses on account, profile, and reference flows. Direct calls and evidence-chain tools are not live yet.",
-  quick: "Quick access",
-  referenceOnly: "Reference only",
-  lawyerAction: "Browse lawyer profiles and service notes",
-  lawyerDeskAction: "Read obligations and current scope",
-  walletAction: "Check points and transaction status",
-  workerNoticeTitle: "Before you continue",
-  workerNoticeItems: [
-    "AI answers are not formal legal advice.",
-    "Keep original documents and timing records by yourself.",
-    "Use the cited regulations and a licensed lawyer for case-specific action.",
-  ],
-  lawyerNoticeTitle: "Lawyer reminder",
-  lawyerNoticeItems: [
-    "Confirm the service boundary before providing any legal service.",
-    "Direct calls, recording retention, and evidence-chain tools are not live yet.",
-    "Do not request unnecessary personal data outside the platform.",
-  ],
-  account: "Account",
-  status: "Current status",
-  workerStatus: "RAG answers, lawyer browsing, and wallet pages are available in this build.",
-  lawyerStatus: "You are viewing the lawyer-specific workspace and compliance flow.",
-  modalTitle: "Lawyer notice",
-  modalBody:
-    "Before using this account to provide legal services, please review the service boundary and your professional obligations.",
-  modalItems: [
-    "Do not imply a formal representation relationship before the required steps are complete.",
-    "Handle confidentiality and personal-data processing according to applicable rules.",
-    "Current public testing does not include direct calls, recordings, or evidence-chain storage.",
-  ],
-  acknowledge: "I understand",
-  profileTitle: "Profile",
-  profileHint: "This page currently shows basic account information only.",
-};
-
-const zh = {
-  loading: "正在載入 LawBridge...",
-  signOut: "登出",
-  home: "首頁",
-  ai: "RAG 法律 AI",
-  lawyersWorker: "律師協助",
-  lawyersLawyer: "律師工作台",
-  wallet: "錢包",
-  profile: "個人資料",
-  roleWorker: "需要法律協助",
-  roleLawyer: "律師帳戶",
-  eyebrow: "LawBridge",
-  workerTitle: "先查法規，再決定是否找律師。",
-  workerBody:
-    "AI 回答僅供參考。若涉及真實爭議，請保留原始文件與時間紀錄，再改看正式法律意見。",
-  lawyerTitle: "先閱讀平台聲明，再處理律師工作台資料。",
-  lawyerBody:
-    "公開測試版本目前以帳戶、資料瀏覽與參考流程為主。直接通話、錄音留存與證據鏈工具尚未上線。",
-  quick: "快速入口",
-  referenceOnly: "僅供參考",
-  lawyerAction: "瀏覽律師資料與服務說明",
-  lawyerDeskAction: "查看權利義務與目前功能範圍",
-  walletAction: "查看點數與交易狀態",
-  workerNoticeTitle: "使用提醒",
-  workerNoticeItems: [
-    "AI 回答不是正式法律意見。",
-    "重要文件仍應自行保存原件與時間紀錄。",
-    "如有個案爭議，請以原始法規與專業律師意見為準。",
-  ],
-  lawyerNoticeTitle: "律師執業提醒",
-  lawyerNoticeItems: [
-    "提供法律服務前，請再次確認是否成立委任或諮詢關係。",
-    "平台目前尚未開放直接通話、錄音留存與證據鏈管理。",
-    "請勿在平台外要求超出必要範圍的個資或文件。",
-  ],
-  account: "帳戶",
-  status: "目前狀態",
-  workerStatus: "目前可使用 RAG 問答、律師資料瀏覽與錢包頁。",
-  lawyerStatus: "你目前看到的是律師專用工作台與聲明流程。",
-  modalTitle: "律師權利義務聲明",
-  modalBody:
-    "在平台上提供任何法律服務前，請先確認服務邊界、保密義務、個資處理與委任關係。",
-  modalItems: [
-    "未完成必要程序前，不得讓使用者誤認已成立正式委任關係。",
-    "請依適用規範處理保密、個資與執業責任。",
-    "目前公開測試不包含直接通話、錄音留存與證據鏈保存功能。",
-  ],
-  acknowledge: "我已了解",
-  profileTitle: "個人資料",
-  profileHint: "此頁目前僅顯示基本帳戶資料。",
-};
-
-function getCopy(locale: SupportedLocale) {
-  return locale === "zh-TW" ? zh : en;
-}
-
 export default function App() {
   return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
 
@@ -177,14 +75,14 @@ function AppContent() {
 }
 
 function LoadingScreen({ locale }: { locale: SupportedLocale }) {
-  const copy = getCopy(locale);
+  const t = useTranslation(locale);
 
   return (
     <div className="flex min-h-screen items-center justify-center px-6">
       <div className="brand-surface flex w-full max-w-md flex-col items-center rounded-[2rem] px-8 py-12 text-center">
         <BrandLogo />
         <Loader2 className="mt-8 h-10 w-10 animate-spin text-[var(--brand-accent)]" />
-        <p className="mt-4 text-sm text-slate-500">{copy.loading}</p>
+        <p className="mt-4 text-sm text-slate-500">{t.app.loading}</p>
       </div>
     </div>
   );
@@ -198,7 +96,20 @@ function HomePage({
   onLocaleChange: (locale: SupportedLocale) => void;
 }) {
   const { user, signOut } = useAuthContext();
-  const [currentTab, setCurrentTab] = useState<Tab>("home");
+  const t = useTranslation(locale);
+  const [currentTab, setCurrentTab] = useState<Tab>(() => {
+    if (typeof window === "undefined") {
+      return "home";
+    }
+
+    const requestedTab = new URLSearchParams(window.location.search).get("tab");
+    return requestedTab === "ai" ||
+      requestedTab === "lawyers" ||
+      requestedTab === "wallet" ||
+      requestedTab === "profile"
+      ? requestedTab
+      : "home";
+  });
   const [noticeRefresh, setNoticeRefresh] = useState(0);
   const [activeCall, setActiveCall] = useState<{
     consultationId: string;
@@ -214,13 +125,12 @@ function HomePage({
     durationSec: number;
     chargedPoints: number;
   } | null>(null);
-  const copy = getCopy(locale);
   const isLawyer = user?.role === "lawyer";
 
   const handleStartCall = async (lawyerUid: string, lawyerName: string, rate: number) => {
     if (!user) return;
     try {
-      const res = await fetch("/api/consultation/start", {
+      const res = await authenticatedFetch("/api/consultation/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -233,9 +143,7 @@ function HomePage({
       });
       const data = await res.json();
       if (data.error === "INSUFFICIENT_BALANCE") {
-        alert(locale === "zh-TW"
-          ? `餘額不足！需要至少 ${data.required} 點，目前有 ${data.balance} 點。請先儲值。`
-          : `Insufficient balance! Need ${data.required} pts, have ${data.balance} pts. Please top up first.`);
+        alert(interpolate(t.app.insufficientBalance, { required: data.required, balance: data.balance }));
         setCurrentTab("wallet");
         return;
       }
@@ -249,7 +157,7 @@ function HomePage({
       });
     } catch (err) {
       console.error("Start call error:", err);
-      alert(err instanceof Error ? err.message : "Failed to start call");
+      alert(err instanceof Error ? err.message : t.app.callFailed);
     }
   };
 
@@ -257,7 +165,7 @@ function HomePage({
     if (!activeCall) return;
     const callInfo = { ...activeCall };
     try {
-      const res = await fetch("/api/consultation/end", {
+      const res = await authenticatedFetch("/api/consultation/end", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -267,7 +175,6 @@ function HomePage({
       });
       const data = await res.json();
 
-      // Show rating dialog for workers
       if (callInfo.role === "worker" && callInfo.lawyerUid) {
         setPostCall({
           consultationId: callInfo.consultationId,
@@ -282,6 +189,7 @@ function HomePage({
     }
     setActiveCall(null);
   };
+
   const noticeKey = user ? `lawbridge-lawyer-notice:${user.uid}` : "";
   const shouldShowLawyerNotice =
     noticeRefresh >= 0 &&
@@ -294,18 +202,18 @@ function HomePage({
 
   const navItems = isLawyer
     ? [
-        { key: "home" as const, label: locale === "zh-TW" ? "總覽" : "Dashboard", icon: <BarChart3 className="h-5 w-5" /> },
-        { key: "lawyers" as const, label: copy.lawyersLawyer, icon: <Phone className="h-5 w-5" /> },
-        { key: "ai" as const, label: locale === "zh-TW" ? "法規查詢" : "Legal AI", icon: <MessageCircle className="h-5 w-5" /> },
-        { key: "wallet" as const, label: locale === "zh-TW" ? "收入" : "Earnings", icon: <Wallet className="h-5 w-5" /> },
-        { key: "profile" as const, label: copy.profile, icon: <User className="h-5 w-5" /> },
+        { key: "home" as const, label: t.nav.dashboard, icon: <BarChart3 className="h-5 w-5" /> },
+        { key: "lawyers" as const, label: t.nav.lawyerDesk, icon: <Phone className="h-5 w-5" /> },
+        { key: "ai" as const, label: t.nav.legalAi, icon: <MessageCircle className="h-5 w-5" /> },
+        { key: "wallet" as const, label: t.nav.earnings, icon: <Wallet className="h-5 w-5" /> },
+        { key: "profile" as const, label: t.nav.profile, icon: <User className="h-5 w-5" /> },
       ]
     : [
-        { key: "home" as const, label: copy.home, icon: <Scale className="h-5 w-5" /> },
-        { key: "ai" as const, label: copy.ai, icon: <MessageCircle className="h-5 w-5" /> },
-        { key: "lawyers" as const, label: copy.lawyersWorker, icon: <Phone className="h-5 w-5" /> },
-        { key: "wallet" as const, label: copy.wallet, icon: <Wallet className="h-5 w-5" /> },
-        { key: "profile" as const, label: copy.profile, icon: <User className="h-5 w-5" /> },
+        { key: "home" as const, label: t.nav.home, icon: <Scale className="h-5 w-5" /> },
+        { key: "ai" as const, label: t.nav.ragAi, icon: <MessageCircle className="h-5 w-5" /> },
+        { key: "lawyers" as const, label: t.nav.findLawyer, icon: <Phone className="h-5 w-5" /> },
+        { key: "wallet" as const, label: t.nav.wallet, icon: <Wallet className="h-5 w-5" /> },
+        { key: "profile" as const, label: t.nav.profile, icon: <User className="h-5 w-5" /> },
       ];
 
   const acknowledgeLawyerNotice = () => {
@@ -329,7 +237,7 @@ function HomePage({
                 className="inline-flex items-center gap-2 rounded-full bg-[var(--brand-ink)] px-4 py-2 text-sm text-white transition hover:bg-slate-800"
               >
                 <LogOut className="h-4 w-4" />
-                {copy.signOut}
+                {t.app.signOut}
               </button>
             </div>
           </div>
@@ -338,20 +246,20 @@ function HomePage({
         <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
           <aside className="brand-surface hidden rounded-[1.8rem] p-5 lg:block">
             <div className="rounded-[1.6rem] border border-slate-200 bg-white p-4 shadow-sm">
-              <p className="text-xs uppercase tracking-[0.28em] text-slate-400">{copy.account}</p>
+              <p className="text-xs uppercase tracking-[0.28em] text-slate-400">{t.app.account}</p>
               <p className="mt-3 text-lg font-semibold text-slate-900">
                 {user?.displayName || user?.email}
               </p>
               <p className="mt-1 text-sm text-slate-500">{user?.email}</p>
               <p className="mt-4 inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600">
-                {isLawyer ? copy.roleLawyer : copy.roleWorker}
+                {isLawyer ? t.app.roleLawyer : t.app.roleWorker}
               </p>
             </div>
 
             <div className="mt-4 rounded-[1.6rem] border border-slate-200 bg-white p-4 shadow-sm">
-              <p className="text-xs uppercase tracking-[0.28em] text-slate-400">{copy.status}</p>
+              <p className="text-xs uppercase tracking-[0.28em] text-slate-400">{t.app.status}</p>
               <p className="mt-3 text-sm leading-7 text-slate-600">
-                {isLawyer ? copy.lawyerStatus : copy.workerStatus}
+                {isLawyer ? t.app.lawyerStatus : t.app.workerStatus}
               </p>
             </div>
 
@@ -384,45 +292,45 @@ function HomePage({
                 <div className="brand-hero overflow-hidden rounded-[1.8rem] px-5 py-7 text-white sm:px-8">
                   <div className="max-w-2xl">
                     <span className="inline-flex rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs uppercase tracking-[0.32em] text-white/78">
-                      {copy.eyebrow}
+                      {t.app.eyebrow}
                     </span>
                     <h1 className="brand-title mt-4 text-3xl font-semibold leading-tight sm:text-4xl">
-                      {copy.workerTitle}
+                      {t.app.workerTitle}
                     </h1>
                     <p className="mt-4 max-w-2xl text-sm leading-7 text-white/84">
-                      {copy.workerBody}
+                      {t.app.workerBody}
                     </p>
                   </div>
                 </div>
 
                 <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(300px,0.9fr)]">
                   <div className="rounded-[1.6rem] border border-slate-200 bg-white p-5 shadow-sm">
-                    <p className="text-sm uppercase tracking-[0.28em] text-slate-400">{copy.quick}</p>
+                    <p className="text-sm uppercase tracking-[0.28em] text-slate-400">{t.app.quick}</p>
                     <div className="mt-4 grid gap-3 md:grid-cols-3">
                       <ActionCard
                         icon={<MessageCircle className="h-6 w-6 text-emerald-600" />}
-                        title={copy.ai}
-                        subtitle={copy.referenceOnly}
+                        title={t.nav.ragAi}
+                        subtitle={t.app.referenceOnly}
                         onClick={() => setCurrentTab("ai")}
                       />
                       <ActionCard
                         icon={<Phone className="h-6 w-6 text-sky-600" />}
-                        title={copy.lawyersWorker}
-                        subtitle={copy.lawyerAction}
+                        title={t.nav.findLawyer}
+                        subtitle={t.app.lawyerAction}
                         onClick={() => setCurrentTab("lawyers")}
                       />
                       <ActionCard
                         icon={<Wallet className="h-6 w-6 text-amber-600" />}
-                        title={copy.wallet}
-                        subtitle={copy.walletAction}
+                        title={t.nav.wallet}
+                        subtitle={t.app.walletAction}
                         onClick={() => setCurrentTab("wallet")}
                       />
                     </div>
                   </div>
 
                   <NoticeCard
-                    title={copy.workerNoticeTitle}
-                    items={copy.workerNoticeItems}
+                    title={t.app.workerNoticeTitle}
+                    items={t.app.workerNoticeItems}
                   />
                 </div>
               </section>
@@ -466,15 +374,14 @@ function HomePage({
 
       {shouldShowLawyerNotice ? (
         <LegalNoticeModal
-          title={copy.modalTitle}
-          body={copy.modalBody}
-          items={copy.modalItems}
-          acknowledgeLabel={copy.acknowledge}
+          title={t.app.modalTitle}
+          body={t.app.modalBody}
+          items={t.app.modalItems}
+          acknowledgeLabel={t.app.acknowledge}
           onAcknowledge={acknowledgeLawyerNotice}
         />
       ) : null}
 
-      {/* Incoming call banner for lawyers */}
       {isLawyer && user && !activeCall ? (
         <IncomingCallBanner
           lawyerUid={user.uid}
@@ -490,7 +397,6 @@ function HomePage({
         />
       ) : null}
 
-      {/* Active call overlay */}
       {activeCall && user ? (
         <CallWindow
           consultationId={activeCall.consultationId}
@@ -506,7 +412,6 @@ function HomePage({
         />
       ) : null}
 
-      {/* Post-call rating dialog */}
       {postCall && user ? (
         <PostCallRating
           consultationId={postCall.consultationId}
@@ -564,7 +469,7 @@ function NoticeCard({ title, items }: { title: string; items: string[] }) {
 
 function ProfilePage({ locale }: { locale: SupportedLocale }) {
   const { user } = useAuthContext();
-  const isZh = locale === "zh-TW";
+  const t = useTranslation(locale);
   const [consultations, setConsultations] = useState<Consultation[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
 
@@ -583,7 +488,7 @@ function ProfilePage({ locale }: { locale: SupportedLocale }) {
         const snap = await getDocs(q);
         setConsultations(snap.docs.map((d) => d.data() as Consultation));
       } catch {
-        // Query may fail if index doesn't exist — silently fail
+        // Query may fail if index doesn't exist
       } finally {
         setLoadingHistory(false);
       }
@@ -596,7 +501,6 @@ function ProfilePage({ locale }: { locale: SupportedLocale }) {
 
   return (
     <div className="mx-auto max-w-4xl space-y-5">
-      {/* Profile Card */}
       <div className="rounded-[1.6rem] border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-start">
           <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full bg-slate-100">
@@ -608,10 +512,10 @@ function ProfilePage({ locale }: { locale: SupportedLocale }) {
             <div className="mt-3 flex flex-wrap justify-center gap-2 sm:justify-start">
               <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600">
                 <Shield className="h-3.5 w-3.5" />
-                {isLawyer ? (isZh ? "律師帳戶" : "Lawyer") : (isZh ? "需求者帳戶" : "Worker")}
+                {isLawyer ? t.profile.lawyerAccount : t.profile.workerAccount}
               </span>
               <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs text-emerald-700">
-                {isZh ? "狀態：啟用" : "Status: Active"}
+                {t.profile.statusActive}
               </span>
             </div>
           </div>
@@ -619,27 +523,26 @@ function ProfilePage({ locale }: { locale: SupportedLocale }) {
 
         <div className="mt-6 grid gap-4 sm:grid-cols-3">
           <div className="rounded-[1.2rem] bg-slate-50 px-4 py-3 text-center">
-            <p className="text-xs text-slate-400">{isZh ? "帳戶 UID" : "Account UID"}</p>
+            <p className="text-xs text-slate-400">{t.profile.accountUid}</p>
             <p className="mt-1 truncate text-sm font-mono text-slate-700">{user.uid}</p>
           </div>
           <div className="rounded-[1.2rem] bg-slate-50 px-4 py-3 text-center">
-            <p className="text-xs text-slate-400">{isZh ? "偏好語言" : "Language"}</p>
+            <p className="text-xs text-slate-400">{t.profile.language}</p>
             <p className="mt-1 text-sm text-slate-700">{user.language || locale}</p>
           </div>
           <div className="rounded-[1.2rem] bg-slate-50 px-4 py-3 text-center">
-            <p className="text-xs text-slate-400">{isZh ? "建立日期" : "Created"}</p>
+            <p className="text-xs text-slate-400">{t.profile.created}</p>
             <p className="mt-1 text-sm text-slate-700">
-              {user.createdAt ? new Date(user.createdAt).toLocaleDateString(locale === "zh-TW" ? "zh-TW" : "en") : "—"}
+              {user.createdAt ? new Date(user.createdAt).toLocaleDateString(locale === "zh-TW" ? "zh-TW" : "en") : "\u2014"}
             </p>
           </div>
         </div>
       </div>
 
-      {/* Consultation History */}
       <div className="rounded-[1.6rem] border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex items-center gap-2">
           <History className="h-5 w-5 text-sky-600" />
-          <h3 className="text-lg font-semibold text-slate-900">{isZh ? "諮詢紀錄" : "Consultation History"}</h3>
+          <h3 className="text-lg font-semibold text-slate-900">{t.profile.consultationHistory}</h3>
         </div>
 
         {loadingHistory ? (
@@ -648,25 +551,28 @@ function ProfilePage({ locale }: { locale: SupportedLocale }) {
           </div>
         ) : consultations.length === 0 ? (
           <div className="mt-4 rounded-[1.4rem] bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
-            {isZh ? "尚無諮詢紀錄。" : "No consultation history yet."}
+            {t.profile.noHistory}
           </div>
         ) : (
           <div className="mt-4 space-y-2">
             {consultations.map((c) => (
-              <div key={c.id} className="flex items-center justify-between rounded-[1.2rem] bg-slate-50 px-4 py-3">
-                <div>
-                  <p className="text-sm font-medium text-slate-800">
-                    {isZh ? "語音諮詢" : "Voice Consultation"}
-                  </p>
-                  <p className="text-xs text-slate-400">
-                    {new Date(c.createdAt).toLocaleString(isZh ? "zh-TW" : "en")}
-                    {" · "}
-                    {Math.ceil(c.durationSec / 60)}{isZh ? " 分鐘" : " min"}
-                  </p>
+              <div key={c.id} className="rounded-[1.2rem] bg-slate-50 px-4 py-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-slate-800">
+                      {t.common.voiceConsultation}
+                    </p>
+                    <p className="text-xs text-slate-400">
+                      {new Date(c.createdAt).toLocaleString(locale === "zh-TW" ? "zh-TW" : "en")}
+                      {" \u00b7 "}
+                      {Math.ceil(c.durationSec / 60)} {t.common.min}
+                    </p>
+                  </div>
+                  <span className={`text-sm font-semibold ${isLawyer ? "text-emerald-600" : "text-red-500"}`}>
+                    {isLawyer ? "+" : "-"}{isLawyer ? c.lawyerPayoutPoints : c.chargePoints} {t.common.pts}
+                  </span>
                 </div>
-                <span className={`text-sm font-semibold ${isLawyer ? "text-emerald-600" : "text-red-500"}`}>
-                  {isLawyer ? "+" : "-"}{isLawyer ? c.lawyerPayoutPoints : c.chargePoints} {isZh ? "點" : "pts"}
-                </span>
+                <ConsultationRecordingPanel consultation={c} locale={locale} />
               </div>
             ))}
           </div>

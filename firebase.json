@@ -16,7 +16,18 @@
         "firebase-debug.log",
         "firebase-debug.*.log",
         ".next",
-        ".vercel"
+        ".vercel",
+        "data",
+        "raguse",
+        "image",
+        "scripts",
+        "feature_status_2026-03-21.md",
+        "implementation_plan.md",
+        "implementation_plan0321.md",
+        "proposal_20260306_164145.json",
+        "walkthrough.md",
+        "walkthrough0321.md",
+        "y"
       ]
     }
   ]

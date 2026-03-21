@@ -14,6 +14,9 @@ const TARGET_LAWS = [
   { pcode: 'N0030020', name: '勞工退休金條例' },
   { pcode: 'N0060001', name: '職業安全衛生法' },
   { pcode: 'N0030014', name: '性別平等工作法' },
+  { pcode: 'N0090027', name: '雇主聘僱外國人許可及管理辦法' },
+  { pcode: 'L0050018', name: '受聘僱外國人健康檢查管理辦法' },
+  { pcode: 'N0090023', name: '外國人受聘僱從事就業服務法第四十六條第一項第八款至第十一款規定工作之轉換雇主或工作程序準則' },
 ];
 
 interface LawArticle {
@@ -21,6 +24,13 @@ interface LawArticle {
   content: string;
   chapter?: string;
   section?: string;
+  attachments?: LawAttachment[];
+}
+
+interface LawAttachment {
+  url: string;
+  downloadName: string;
+  localPath?: string;
 }
 
 interface LawData {
@@ -125,6 +135,20 @@ function parseLawHTML(html: string, pcode: string, expectedName: string): LawDat
         lines.push($(lineEl).text().trim());
       });
       const content = lines.join('\n');
+      
+      const attachments: LawAttachment[] = [];
+      // Catch attachment links
+      lawArticle.find('a[href*="LawGetFile.ashx"], a[href*="getfile.ashx"]').each((_, aEl) => {
+        const href = $(aEl).attr('href');
+        const text = $(aEl).text().trim();
+        if (href) {
+          const absoluteUrl = new URL(href, url).href;
+          attachments.push({
+            url: absoluteUrl,
+            downloadName: `${pcode}_${articleName}_${text}`.replace(/[\\/:*?"<>|]/g, '_')
+          });
+        }
+      });
 
       if (content) {
         articles.push({
@@ -132,6 +156,7 @@ function parseLawHTML(html: string, pcode: string, expectedName: string): LawDat
           content,
           ...(currentChapter ? { chapter: currentChapter } : {}),
           ...(currentSection ? { section: currentSection } : {}),
+          ...(attachments.length > 0 ? { attachments } : {})
         });
       }
     }
@@ -155,6 +180,43 @@ async function crawlLaw(pcode: string, expectedName: string): Promise<LawData> {
   const html = await fetchPage(url);
   const data = parseLawHTML(html, pcode, expectedName);
   console.log(`  ✅ ${data.name}: ${data.totalArticles} 條, ${data.chapters.length} 章, 修正日期 ${data.effectiveDate || '(未知)'}`);
+  
+  const ragusedir = path.join(process.cwd(), 'raguse');
+  if(!fs.existsSync(ragusedir)) fs.mkdirSync(ragusedir, {recursive: true});
+  
+  for (const article of data.articles) {
+    if (article.attachments) {
+      for (const att of article.attachments) {
+        try {
+          console.log(`    ⬇ 下載附件: ${att.downloadName}`);
+          const res = await fetch(att.url);
+          if(!res.ok) throw new Error(`HTTP ${res.status}`);
+          
+          let ext = '.pdf';
+          const cd = res.headers.get('content-disposition') || '';
+          if (cd.includes('.doc')) ext = '.doc';
+          if (cd.includes('.docx')) ext = '.docx';
+          if (cd.includes('.xls')) ext = '.xls';
+          if (cd.includes('.xlsx')) ext = '.xlsx';
+          if (cd.includes('.odt')) ext = '.odt';
+          
+          const finalFilename = att.downloadName + ext;
+          const destPath = path.join(ragusedir, finalFilename);
+          att.localPath = destPath;
+          
+          const buffer = Buffer.from(await res.arrayBuffer());
+          fs.writeFileSync(destPath, buffer);
+          
+          article.content += `\n\n[此條文含有附件，已自動下載儲存為：${finalFilename}]`;
+          
+          await new Promise(r => setTimeout(r, 800)); // Be nice to the server
+        } catch(e) {
+          console.warn(`    ⚠ 下載附件失敗 ${att.downloadName}: ${e}`);
+        }
+      }
+    }
+  }
+
   return data;
 }
 

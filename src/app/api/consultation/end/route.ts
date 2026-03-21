@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase/admin";
+import {
+  RequestAuthError,
+  requireAuthenticatedUser,
+} from "@/lib/auth/requireUser";
 import { FieldValue } from "firebase-admin/firestore";
 
 export async function POST(req: NextRequest) {
   try {
+    const authUser = await requireAuthenticatedUser(req);
     const { consultationId, durationSec } = await req.json();
 
     if (!consultationId || durationSec == null) {
@@ -21,6 +26,13 @@ export async function POST(req: NextRequest) {
     }
 
     const data = consultSnap.data()!;
+    if (
+      data.workerUid !== authUser.uid &&
+      data.lawyerUid !== authUser.uid
+    ) {
+      return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+    }
+
     if (data.status === "completed" || data.status === "cancelled") {
       return NextResponse.json({
         message: "Already finalized",
@@ -29,16 +41,15 @@ export async function POST(req: NextRequest) {
     }
 
     const ratePerMinute = data.ratePerMinute || 10;
-    const minutes = Math.max(1, Math.ceil(durationSec / 60)); // Minimum 1 minute
+    const minutes = Math.max(1, Math.ceil(durationSec / 60));
     const totalCharge = minutes * ratePerMinute;
-    const platformFee = Math.ceil(totalCharge * 0.2); // 20% platform fee
+    const platformFee = Math.ceil(totalCharge * 0.2);
     const lawyerPayout = totalCharge - platformFee;
 
     const workerUid = data.workerUid;
     const lawyerUid = data.lawyerUid;
     const now = new Date().toISOString();
 
-    // Use a Firestore transaction for atomic balance updates
     await adminDb.runTransaction(async (txn) => {
       const workerWalletRef = adminDb.doc(`wallets/${workerUid}`);
       const lawyerWalletRef = adminDb.doc(`wallets/${lawyerUid}`);
@@ -46,18 +57,15 @@ export async function POST(req: NextRequest) {
       const lawyerWallet = await txn.get(lawyerWalletRef);
 
       const workerBalance = workerWallet.data()?.pointsBalance ?? 0;
-      // Charge what's available (don't let it go negative)
       const actualCharge = Math.min(totalCharge, workerBalance);
       const actualPlatformFee = Math.ceil(actualCharge * 0.2);
       const actualLawyerPayout = actualCharge - actualPlatformFee;
 
-      // Deduct from worker
       txn.update(workerWalletRef, {
         pointsBalance: FieldValue.increment(-actualCharge),
         updatedAt: now,
       });
 
-      // Credit to lawyer (create wallet if doesn't exist)
       if (lawyerWallet.exists) {
         txn.update(lawyerWalletRef, {
           pointsBalance: FieldValue.increment(actualLawyerPayout),
@@ -72,7 +80,6 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      // Create transaction records (double-entry)
       const workerTxnRef = adminDb.collection("wallet_transactions").doc();
       txn.set(workerTxnRef, {
         id: workerTxnRef.id,
@@ -109,7 +116,6 @@ export async function POST(req: NextRequest) {
         createdAt: now,
       });
 
-      // Update consultation
       txn.update(consultRef, {
         status: "completed",
         durationSec,
@@ -129,6 +135,10 @@ export async function POST(req: NextRequest) {
       lawyerPayoutPoints: lawyerPayout,
     });
   } catch (err) {
+    if (err instanceof RequestAuthError) {
+      return NextResponse.json({ error: err.message }, { status: err.status });
+    }
+
     console.error("End consultation error:", err);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Internal error" },

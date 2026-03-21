@@ -11,7 +11,9 @@ import {
   getDocs,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
+import { authenticatedFetch } from "@/lib/api/authenticatedFetch";
 import { Mic, MicOff, PhoneOff, Loader2, Clock } from "lucide-react";
+import { useTranslation } from "@/hooks/useTranslation";
 import type { SupportedLocale } from "@/types";
 
 interface CallWindowProps {
@@ -24,49 +26,17 @@ interface CallWindowProps {
   onError: (msg: string) => void;
 }
 
-const STUN_SERVERS = {
+const RTC_CONFIGURATION = {
   iceServers: [
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" },
   ],
 };
 
-const en = {
-  connecting: "Connecting...",
-  waitingLawyer: "Waiting for lawyer to accept...",
-  waitingWorker: "Incoming call...",
-  inCall: "In call",
-  mute: "Mute",
-  unmute: "Unmute",
-  endCall: "End call",
-  perMin: "pts/min",
-  elapsed: "Elapsed",
-  charged: "Charged",
-  pts: "pts",
-};
-
-const zh = {
-  connecting: "連線中...",
-  waitingLawyer: "等待律師接聽...",
-  waitingWorker: "來電中...",
-  inCall: "通話中",
-  mute: "靜音",
-  unmute: "取消靜音",
-  endCall: "結束通話",
-  perMin: "點/分",
-  elapsed: "已通話",
-  charged: "已扣",
-  pts: "點",
-};
-
-function getCopy(locale: SupportedLocale) {
-  return locale === "zh-TW" ? zh : en;
-}
-
 function formatTime(sec: number) {
-  const m = Math.floor(sec / 60);
-  const s = sec % 60;
-  return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+  const minutes = Math.floor(sec / 60);
+  const seconds = sec % 60;
+  return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
 }
 
 export function CallWindow({
@@ -78,173 +48,305 @@ export function CallWindow({
   onEnd,
   onError,
 }: CallWindowProps) {
-  const copy = getCopy(locale);
+  const t = useTranslation(locale);
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
-  const [status, setStatus] = useState<
-    "connecting" | "waiting" | "active" | "ended"
-  >("connecting");
+  const remoteStreamRef = useRef<MediaStream | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const elapsedRef = useRef(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const startTimeRef = useRef(0);
+  const endingRef = useRef(false);
+  const remoteAudioRef = useRef<HTMLAudioElement>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const recordingDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
+  const remoteSourceConnectedRef = useRef(false);
+  const [status, setStatus] = useState<"connecting" | "waiting" | "active" | "ended">("connecting");
   const [muted, setMuted] = useState(false);
   const [elapsed, setElapsed] = useState(0);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const startTimeRef = useRef<number>(0);
-  const remoteAudioRef = useRef<HTMLAudioElement>(null);
 
-  const cleanup = useCallback(() => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    localStreamRef.current?.getTracks().forEach((t) => t.stop());
-    pcRef.current?.close();
-    pcRef.current = null;
-    localStreamRef.current = null;
+  const stopTimer = useCallback(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
   }, []);
 
-  const endCall = useCallback(() => {
-    const duration = elapsed;
-    cleanup();
-    setStatus("ended");
-    onEnd(duration);
-  }, [elapsed, cleanup, onEnd]);
-
-  // Timer
-  useEffect(() => {
-    if (status === "active") {
-      startTimeRef.current = Date.now();
-      timerRef.current = setInterval(() => {
-        setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
-      }, 1000);
+  const cleanupTransport = useCallback(async () => {
+    stopTimer();
+    pcRef.current?.close();
+    pcRef.current = null;
+    localStreamRef.current?.getTracks().forEach((track) => track.stop());
+    remoteStreamRef.current?.getTracks().forEach((track) => track.stop());
+    localStreamRef.current = null;
+    remoteStreamRef.current = null;
+    remoteAudioRef.current?.removeAttribute("src");
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.srcObject = null;
     }
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [status]);
+    remoteSourceConnectedRef.current = false;
 
-  // WebRTC + Firestore signaling
+    if (audioContextRef.current) {
+      await audioContextRef.current.close().catch(() => {});
+      audioContextRef.current = null;
+      recordingDestinationRef.current = null;
+    }
+  }, [stopTimer]);
+
+  const uploadRecording = useCallback(async () => {
+    if (chunksRef.current.length === 0) {
+      return;
+    }
+
+    try {
+      const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+      const formData = new FormData();
+      formData.append("consultationId", consultationId);
+      formData.append("audio", blob, `recording-${consultationId}.webm`);
+      await authenticatedFetch("/api/consultation/upload-recording", {
+        method: "POST",
+        body: formData,
+      });
+    } catch (err) {
+      console.error("Recording upload failed:", err);
+    } finally {
+      chunksRef.current = [];
+    }
+  }, [consultationId]);
+
+  const finalizeRecording = useCallback(async () => {
+    const recorder = recorderRef.current;
+    recorderRef.current = null;
+
+    if (!recorder) {
+      chunksRef.current = [];
+      return;
+    }
+
+    if (recorder.state !== "inactive") {
+      await new Promise<void>((resolve) => {
+        recorder.addEventListener(
+          "stop",
+          () => resolve(),
+          { once: true }
+        );
+        recorder.requestData();
+        recorder.stop();
+      });
+    }
+
+    await uploadRecording();
+  }, [uploadRecording]);
+
+  const endCall = useCallback(
+    async (notifyParent = true) => {
+      if (endingRef.current) {
+        return;
+      }
+
+      endingRef.current = true;
+      const duration = elapsedRef.current;
+      setStatus("ended");
+
+      try {
+        await finalizeRecording();
+      } finally {
+        await cleanupTransport();
+        if (notifyParent) {
+          onEnd(duration);
+        }
+      }
+    },
+    [cleanupTransport, finalizeRecording, onEnd]
+  );
+
+  const setupRecordingMix = useCallback((localStream: MediaStream) => {
+    if (typeof AudioContext === "undefined") {
+      return;
+    }
+
+    const audioContext = new AudioContext();
+    const destination = audioContext.createMediaStreamDestination();
+    const localSource = audioContext.createMediaStreamSource(localStream);
+    localSource.connect(destination);
+
+    audioContextRef.current = audioContext;
+    recordingDestinationRef.current = destination;
+    remoteSourceConnectedRef.current = false;
+  }, []);
+
+  const connectRemoteStreamToRecording = useCallback((remoteStream: MediaStream) => {
+    if (
+      remoteSourceConnectedRef.current ||
+      !audioContextRef.current ||
+      !recordingDestinationRef.current
+    ) {
+      return;
+    }
+
+    const remoteSource = audioContextRef.current.createMediaStreamSource(remoteStream);
+    remoteSource.connect(recordingDestinationRef.current);
+    remoteSourceConnectedRef.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (status !== "active") {
+      return;
+    }
+
+    startTimeRef.current = Date.now();
+    timerRef.current = setInterval(() => {
+      const nextElapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
+      elapsedRef.current = nextElapsed;
+      setElapsed(nextElapsed);
+    }, 1000);
+
+    const recordingStream =
+      recordingDestinationRef.current?.stream || localStreamRef.current;
+
+    if (recordingStream && typeof MediaRecorder !== "undefined") {
+      try {
+        const recorder = new MediaRecorder(recordingStream, {
+          mimeType: "audio/webm;codecs=opus",
+        });
+        chunksRef.current = [];
+        recorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            chunksRef.current.push(event.data);
+          }
+        };
+        recorder.start(1000);
+        recorderRef.current = recorder;
+      } catch {
+        recorderRef.current = null;
+      }
+    }
+
+    return stopTimer;
+  }, [status, stopTimer]);
+
   useEffect(() => {
     let cancelled = false;
-    const unsubscribers: (() => void)[] = [];
+    const unsubscribers: Array<() => void> = [];
 
     async function initCall() {
       try {
-        // Get microphone
-        const stream = await navigator.mediaDevices.getUserMedia({
+        const localStream = await navigator.mediaDevices.getUserMedia({
           audio: true,
           video: false,
         });
+
         if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop());
+          localStream.getTracks().forEach((track) => track.stop());
           return;
         }
-        localStreamRef.current = stream;
 
-        // Create peer connection
-        const pc = new RTCPeerConnection(STUN_SERVERS);
+        localStreamRef.current = localStream;
+        setupRecordingMix(localStream);
+
+        const pc = new RTCPeerConnection(RTC_CONFIGURATION);
         pcRef.current = pc;
+        localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
 
-        // Add local audio track
-        stream.getTracks().forEach((track) => pc.addTrack(track, stream));
-
-        // Handle remote audio
         pc.ontrack = (event) => {
-          if (remoteAudioRef.current && event.streams[0]) {
-            remoteAudioRef.current.srcObject = event.streams[0];
+          const [remoteStream] = event.streams;
+          if (!remoteStream) {
+            return;
           }
+
+          remoteStreamRef.current = remoteStream;
+          if (remoteAudioRef.current) {
+            remoteAudioRef.current.srcObject = remoteStream;
+          }
+          connectRemoteStreamToRecording(remoteStream);
         };
 
         pc.onconnectionstatechange = () => {
           if (
             pc.connectionState === "disconnected" ||
-            pc.connectionState === "failed"
+            pc.connectionState === "failed" ||
+            pc.connectionState === "closed"
           ) {
-            endCall();
+            void endCall(true);
           }
         };
 
-        const consultDocRef = doc(db, "consultations", consultationId);
+        const consultationRef = doc(db, "consultations", consultationId);
 
         if (role === "worker") {
-          // CALLER: create offer
-          const callerCandidatesRef = collection(
-            consultDocRef,
-            "callerCandidates"
-          );
+          const callerCandidatesRef = collection(consultationRef, "callerCandidates");
 
           pc.onicecandidate = (event) => {
             if (event.candidate) {
-              addDoc(callerCandidatesRef, event.candidate.toJSON());
+              void addDoc(callerCandidatesRef, event.candidate.toJSON());
             }
           };
 
           const offer = await pc.createOffer();
           await pc.setLocalDescription(offer);
 
-          await updateDoc(consultDocRef, {
+          await updateDoc(consultationRef, {
             offer: { type: offer.type, sdp: offer.sdp },
             status: "requested",
           });
 
           setStatus("waiting");
 
-          // Listen for answer
-          const unsubAnswer = onSnapshot(consultDocRef, (snap) => {
-            const data = snap.data();
+          const unsubAnswer = onSnapshot(consultationRef, (snapshot) => {
+            const data = snapshot.data();
             if (!data) return;
 
             if (data.status === "cancelled") {
-              cleanup();
               setStatus("ended");
+              void cleanupTransport();
               onError("Call was cancelled");
               return;
             }
 
             if (data.answer && !pc.currentRemoteDescription) {
               const answer = new RTCSessionDescription(data.answer);
-              pc.setRemoteDescription(answer).then(() => {
+              void pc.setRemoteDescription(answer).then(() => {
                 setStatus("active");
               });
             }
           });
           unsubscribers.push(unsubAnswer);
 
-          // Listen for callee ICE candidates
           const unsubCalleeCandidates = onSnapshot(
-            collection(consultDocRef, "calleeCandidates"),
-            (snap) => {
-              snap.docChanges().forEach((change) => {
+            collection(consultationRef, "calleeCandidates"),
+            (snapshot) => {
+              snapshot.docChanges().forEach((change) => {
                 if (change.type === "added") {
                   const candidate = new RTCIceCandidate(change.doc.data());
-                  pc.addIceCandidate(candidate);
+                  void pc.addIceCandidate(candidate);
                 }
               });
             }
           );
           unsubscribers.push(unsubCalleeCandidates);
         } else {
-          // CALLEE (lawyer): wait for offer, then create answer
-          const calleeCandidatesRef = collection(
-            consultDocRef,
-            "calleeCandidates"
-          );
+          const calleeCandidatesRef = collection(consultationRef, "calleeCandidates");
 
           pc.onicecandidate = (event) => {
             if (event.candidate) {
-              addDoc(calleeCandidatesRef, event.candidate.toJSON());
+              void addDoc(calleeCandidatesRef, event.candidate.toJSON());
             }
           };
 
           setStatus("waiting");
 
-          // Get the offer
-          const consultSnap = await getDoc(consultDocRef);
-          const consultData = consultSnap.data();
+          const consultationSnap = await getDoc(consultationRef);
+          const consultationData = consultationSnap.data();
 
-          if (consultData?.offer) {
+          if (consultationData?.offer) {
             await pc.setRemoteDescription(
-              new RTCSessionDescription(consultData.offer)
+              new RTCSessionDescription(consultationData.offer)
             );
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
 
-            await updateDoc(consultDocRef, {
+            await updateDoc(consultationRef, {
               answer: { type: answer.type, sdp: answer.sdp },
               status: "in_progress",
               startedAt: new Date().toISOString(),
@@ -253,36 +355,33 @@ export function CallWindow({
             setStatus("active");
           }
 
-          // Listen for caller ICE candidates
           const callerCandidatesSnap = await getDocs(
-            collection(consultDocRef, "callerCandidates")
+            collection(consultationRef, "callerCandidates")
           );
-          callerCandidatesSnap.forEach((doc) => {
-            pc.addIceCandidate(new RTCIceCandidate(doc.data()));
+          callerCandidatesSnap.forEach((snapshot) => {
+            void pc.addIceCandidate(new RTCIceCandidate(snapshot.data()));
           });
 
           const unsubCallerCandidates = onSnapshot(
-            collection(consultDocRef, "callerCandidates"),
-            (snap) => {
-              snap.docChanges().forEach((change) => {
+            collection(consultationRef, "callerCandidates"),
+            (snapshot) => {
+              snapshot.docChanges().forEach((change) => {
                 if (change.type === "added") {
                   const candidate = new RTCIceCandidate(change.doc.data());
-                  pc.addIceCandidate(candidate);
+                  void pc.addIceCandidate(candidate);
                 }
               });
             }
           );
           unsubscribers.push(unsubCallerCandidates);
 
-          // Listen for call end
-          const unsubEnd = onSnapshot(consultDocRef, (snap) => {
-            const data = snap.data();
+          const unsubEnd = onSnapshot(consultationRef, (snapshot) => {
+            const data = snapshot.data();
             if (
               data &&
               (data.status === "completed" || data.status === "cancelled")
             ) {
-              cleanup();
-              setStatus("ended");
+              void endCall(false);
             }
           });
           unsubscribers.push(unsubEnd);
@@ -293,42 +392,48 @@ export function CallWindow({
       }
     }
 
-    initCall();
+    void initCall();
 
     return () => {
       cancelled = true;
       unsubscribers.forEach((unsub) => unsub());
-      cleanup();
+      void endCall(false);
     };
-  }, [consultationId, role, cleanup, onEnd, onError, endCall]);
+  }, [
+    cleanupTransport,
+    connectRemoteStreamToRecording,
+    consultationId,
+    endCall,
+    onError,
+    role,
+    setupRecordingMix,
+  ]);
 
   const toggleMute = () => {
-    if (localStreamRef.current) {
-      const audioTrack = localStreamRef.current.getAudioTracks()[0];
-      if (audioTrack) {
-        audioTrack.enabled = !audioTrack.enabled;
-        setMuted(!audioTrack.enabled);
-      }
+    const audioTrack = localStreamRef.current?.getAudioTracks()[0];
+    if (!audioTrack) {
+      return;
     }
+
+    audioTrack.enabled = !audioTrack.enabled;
+    setMuted(!audioTrack.enabled);
   };
 
   const currentCharge = Math.max(1, Math.ceil(elapsed / 60)) * ratePerMinute;
 
-  if (status === "ended") return null;
+  if (status === "ended") {
+    return null;
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 px-4 backdrop-blur-sm">
       <div className="w-full max-w-sm rounded-[2rem] border border-white/30 bg-white p-6 shadow-[0_30px_90px_rgba(15,23,42,0.28)]">
-        {/* Hidden audio element for remote stream */}
         <audio ref={remoteAudioRef} autoPlay playsInline />
 
-        {/* Status */}
         <div className="text-center">
           <div
             className={`mx-auto flex h-20 w-20 items-center justify-center rounded-full ${
-              status === "active"
-                ? "bg-emerald-100 animate-pulse"
-                : "bg-slate-100"
+              status === "active" ? "animate-pulse bg-emerald-100" : "bg-slate-100"
             }`}
           >
             {status === "active" ? (
@@ -338,34 +443,31 @@ export function CallWindow({
             )}
           </div>
 
-          <p className="mt-4 text-lg font-semibold text-slate-900">
-            {peerName}
-          </p>
+          <p className="mt-4 text-lg font-semibold text-slate-900">{peerName}</p>
           <p className="mt-1 text-sm text-slate-500">
-            {ratePerMinute} {copy.perMin}
+            {ratePerMinute} {t.call.perMin}
           </p>
 
-          {status === "connecting" && (
-            <p className="mt-3 text-sm text-slate-400">{copy.connecting}</p>
-          )}
-          {status === "waiting" && (
+          {status === "connecting" ? (
+            <p className="mt-3 text-sm text-slate-400">{t.call.connecting}</p>
+          ) : null}
+          {status === "waiting" ? (
             <p className="mt-3 text-sm text-amber-600">
-              {role === "worker" ? copy.waitingLawyer : copy.waitingWorker}
+              {role === "worker" ? t.call.waitingLawyer : t.call.waitingWorker}
             </p>
-          )}
-          {status === "active" && (
+          ) : null}
+          {status === "active" ? (
             <div className="mt-4 space-y-1">
-              <p className="text-3xl font-bold text-slate-900 tabular-nums">
+              <p className="text-3xl font-bold tabular-nums text-slate-900">
                 {formatTime(elapsed)}
               </p>
               <p className="text-sm text-slate-500">
-                {copy.charged}: {currentCharge} {copy.pts}
+                {t.call.charged}: {currentCharge} {t.common.pts}
               </p>
             </div>
-          )}
+          ) : null}
         </div>
 
-        {/* Controls */}
         <div className="mt-8 flex items-center justify-center gap-6">
           <button
             type="button"
@@ -375,20 +477,18 @@ export function CallWindow({
                 ? "bg-amber-100 text-amber-700"
                 : "bg-slate-100 text-slate-600 hover:bg-slate-200"
             }`}
-            title={muted ? copy.unmute : copy.mute}
+            title={muted ? t.call.unmute : t.call.mute}
           >
-            {muted ? (
-              <MicOff className="h-6 w-6" />
-            ) : (
-              <Mic className="h-6 w-6" />
-            )}
+            {muted ? <MicOff className="h-6 w-6" /> : <Mic className="h-6 w-6" />}
           </button>
 
           <button
             type="button"
-            onClick={endCall}
+            onClick={() => {
+              void endCall(true);
+            }}
             className="flex h-16 w-16 items-center justify-center rounded-full bg-red-500 text-white shadow-lg transition hover:bg-red-600"
-            title={copy.endCall}
+            title={t.call.endCall}
           >
             <PhoneOff className="h-7 w-7" />
           </button>
