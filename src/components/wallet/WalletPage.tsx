@@ -84,6 +84,10 @@ export function WalletPage({ locale }: Props) {
     tone: "success" | "warning" | "error";
     message: string;
   } | null>(null);
+  const selectedWalletTxnId =
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("walletTxnId")
+      : "";
 
   useEffect(() => {
     let cancelled = false;
@@ -353,7 +357,14 @@ export function WalletPage({ locale }: Props) {
           ) : (
             <div className="mt-4 space-y-2">
               {transactions.map((txn) => (
-                <div key={txn.id} className="rounded-[1.2rem] bg-slate-50 px-4 py-3">
+                <div
+                  key={txn.id}
+                  className={`rounded-[1.2rem] px-4 py-3 ${
+                    txn.id === selectedWalletTxnId
+                      ? "border border-sky-200 bg-sky-50"
+                      : "bg-slate-50"
+                  }`}
+                >
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <div className="flex flex-wrap items-center gap-2">

@@ -24,11 +24,13 @@ export function LoginPage({ locale, onLocaleChange }: LoginPageProps) {
   const [displayName, setDisplayName] = useState("");
   const [role, setRole] = useState<UserRole>("worker");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleEmailLogin = async (event: React.FormEvent) => {
     event.preventDefault();
     setError("");
+    setNotice("");
     setLoading(true);
 
     try {
@@ -43,6 +45,7 @@ export function LoginPage({ locale, onLocaleChange }: LoginPageProps) {
   const handleEmailRegister = async (event: React.FormEvent) => {
     event.preventDefault();
     setError("");
+    setNotice("");
 
     if (password.length < 6) {
       setError(t.login.passwordShort);
@@ -52,6 +55,9 @@ export function LoginPage({ locale, onLocaleChange }: LoginPageProps) {
     setLoading(true);
     try {
       await signUpWithEmail(email, password, role, locale, displayName);
+      setMode("login");
+      setPassword("");
+      setNotice("註冊成功，驗證信已寄到你的 Email。請先完成驗證後再登入。");
     } catch (err) {
       setError(err instanceof Error ? err.message : t.login.registerFailed);
     } finally {
@@ -61,6 +67,7 @@ export function LoginPage({ locale, onLocaleChange }: LoginPageProps) {
 
   const handleGoogleAuth = async () => {
     setError("");
+    setNotice("");
     setLoading(true);
     try {
       await signInWithGoogle(role, locale);
@@ -153,6 +160,7 @@ export function LoginPage({ locale, onLocaleChange }: LoginPageProps) {
                 </>
               )}
 
+              {notice ? <p className="mt-4 rounded-2xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{notice}</p> : null}
               {error ? <p className="mt-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-600">{error}</p> : null}
             </div>
           </div>

@@ -1,18 +1,31 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  doc,
-  onSnapshot,
-  collection,
   addDoc,
-  updateDoc,
+  collection,
+  doc,
   getDoc,
   getDocs,
+  onSnapshot,
+  updateDoc,
 } from "firebase/firestore";
+import {
+  AudioLines,
+  Clock,
+  Globe2,
+  Languages,
+  Loader2,
+  Mic,
+  MicOff,
+  PhoneOff,
+  Send,
+  Square,
+  Volume2,
+} from "lucide-react";
 import { db } from "@/lib/firebase/client";
 import { authenticatedFetch } from "@/lib/api/authenticatedFetch";
-import { Mic, MicOff, PhoneOff, Loader2, Clock } from "lucide-react";
+import { localeNames } from "@/lib/i18n";
 import { useTranslation } from "@/hooks/useTranslation";
 import type { SupportedLocale } from "@/types";
 
@@ -22,8 +35,45 @@ interface CallWindowProps {
   peerName: string;
   ratePerMinute: number;
   locale: SupportedLocale;
+  workerLanguage?: SupportedLocale;
+  workerNationality?: string;
+  translationMode?: "none" | "subtitle_assist";
   onEnd: (durationSec: number) => void;
   onError: (msg: string) => void;
+}
+
+interface CallMeta {
+  workerLanguage?: SupportedLocale;
+  workerNationality?: string;
+  translationMode?: "none" | "subtitle_assist";
+}
+
+interface BrowserSpeechRecognitionResult {
+  isFinal: boolean;
+  0: {
+    transcript: string;
+  };
+}
+
+interface BrowserSpeechRecognitionEvent {
+  resultIndex: number;
+  results: ArrayLike<BrowserSpeechRecognitionResult>;
+}
+
+interface BrowserSpeechRecognition {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  start: () => void;
+  stop: () => void;
+  onstart: (() => void) | null;
+  onend: (() => void) | null;
+  onerror: (() => void) | null;
+  onresult: ((event: BrowserSpeechRecognitionEvent) => void) | null;
+}
+
+interface BrowserSpeechRecognitionConstructor {
+  new (): BrowserSpeechRecognition;
 }
 
 const RTC_CONFIGURATION = {
@@ -36,7 +86,24 @@ const RTC_CONFIGURATION = {
 function formatTime(sec: number) {
   const minutes = Math.floor(sec / 60);
   const seconds = sec % 60;
-  return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+  return `${minutes.toString().padStart(2, "0")}:${seconds
+    .toString()
+    .padStart(2, "0")}`;
+}
+
+function toSpeechLocale(locale: string) {
+  switch (locale) {
+    case "zh-TW":
+      return "zh-TW";
+    case "id":
+      return "id-ID";
+    case "vi":
+      return "vi-VN";
+    case "th":
+      return "th-TH";
+    default:
+      return "en-US";
+  }
 }
 
 export function CallWindow({
@@ -45,6 +112,9 @@ export function CallWindow({
   peerName,
   ratePerMinute,
   locale,
+  workerLanguage,
+  workerNationality,
+  translationMode,
   onEnd,
   onError,
 }: CallWindowProps) {
@@ -60,11 +130,42 @@ export function CallWindow({
   const endingRef = useRef(false);
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const recordingDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
+  const recordingDestinationRef =
+    useRef<MediaStreamAudioDestinationNode | null>(null);
   const remoteSourceConnectedRef = useRef(false);
-  const [status, setStatus] = useState<"connecting" | "waiting" | "active" | "ended">("connecting");
+  const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
+
+  const [status, setStatus] = useState<
+    "connecting" | "waiting" | "active" | "ended"
+  >("connecting");
   const [muted, setMuted] = useState(false);
   const [elapsed, setElapsed] = useState(0);
+  const [callMeta, setCallMeta] = useState<CallMeta>({
+    workerLanguage,
+    workerNationality,
+    translationMode,
+  });
+  const [translationInput, setTranslationInput] = useState("");
+  const [translatedText, setTranslatedText] = useState("");
+  const [translationLoading, setTranslationLoading] = useState(false);
+  const [translationError, setTranslationError] = useState("");
+  const [translationListening, setTranslationListening] = useState(false);
+  const [speakingTranslation, setSpeakingTranslation] = useState(false);
+
+  const showTranslationAssist = useMemo(() => {
+    return (
+      callMeta.translationMode === "subtitle_assist" ||
+      callMeta.workerLanguage === "en" ||
+      callMeta.workerLanguage === "id" ||
+      callMeta.workerLanguage === "vi" ||
+      callMeta.workerLanguage === "th"
+    );
+  }, [callMeta.translationMode, callMeta.workerLanguage]);
+
+  const assistSourceLanguage =
+    role === "lawyer" ? "zh-TW" : callMeta.workerLanguage || locale;
+  const assistTargetLanguage =
+    role === "lawyer" ? callMeta.workerLanguage || "en" : "zh-TW";
 
   const stopTimer = useCallback(() => {
     if (timerRef.current) {
@@ -75,17 +176,20 @@ export function CallWindow({
 
   const cleanupTransport = useCallback(async () => {
     stopTimer();
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
     pcRef.current?.close();
     pcRef.current = null;
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     remoteStreamRef.current?.getTracks().forEach((track) => track.stop());
     localStreamRef.current = null;
     remoteStreamRef.current = null;
-    remoteAudioRef.current?.removeAttribute("src");
+    remoteSourceConnectedRef.current = false;
+
     if (remoteAudioRef.current) {
       remoteAudioRef.current.srcObject = null;
+      remoteAudioRef.current.removeAttribute("src");
     }
-    remoteSourceConnectedRef.current = false;
 
     if (audioContextRef.current) {
       await audioContextRef.current.close().catch(() => {});
@@ -126,11 +230,7 @@ export function CallWindow({
 
     if (recorder.state !== "inactive") {
       await new Promise<void>((resolve) => {
-        recorder.addEventListener(
-          "stop",
-          () => resolve(),
-          { once: true }
-        );
+        recorder.addEventListener("stop", () => resolve(), { once: true });
         recorder.requestData();
         recorder.stop();
       });
@@ -176,19 +276,158 @@ export function CallWindow({
     remoteSourceConnectedRef.current = false;
   }, []);
 
-  const connectRemoteStreamToRecording = useCallback((remoteStream: MediaStream) => {
-    if (
-      remoteSourceConnectedRef.current ||
-      !audioContextRef.current ||
-      !recordingDestinationRef.current
-    ) {
+  const connectRemoteStreamToRecording = useCallback(
+    (remoteStream: MediaStream) => {
+      if (
+        remoteSourceConnectedRef.current ||
+        !audioContextRef.current ||
+        !recordingDestinationRef.current
+      ) {
+        return;
+      }
+
+      const remoteSource =
+        audioContextRef.current.createMediaStreamSource(remoteStream);
+      remoteSource.connect(recordingDestinationRef.current);
+      remoteSourceConnectedRef.current = true;
+    },
+    []
+  );
+
+  const runTranslation = useCallback(
+    async (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed || !showTranslationAssist) {
+        return;
+      }
+
+      setTranslationLoading(true);
+      setTranslationError("");
+
+      try {
+        const res = await authenticatedFetch("/api/consultation/translate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            consultationId,
+            text: trimmed,
+            sourceLanguage: assistSourceLanguage,
+            targetLanguage: assistTargetLanguage,
+          }),
+        });
+
+        const data = (await res.json()) as {
+          translatedText?: string;
+          error?: string;
+        };
+
+        if (!res.ok || !data.translatedText) {
+          throw new Error(data.error || "TRANSLATION_FAILED");
+        }
+
+        setTranslatedText(data.translatedText);
+      } catch (err) {
+        console.error("Translation error:", err);
+        setTranslationError(
+          locale === "zh-TW"
+            ? "目前無法完成翻譯，請改用手動溝通或稍後再試。"
+            : "Translation is unavailable right now."
+        );
+      } finally {
+        setTranslationLoading(false);
+      }
+    },
+    [
+      assistSourceLanguage,
+      assistTargetLanguage,
+      consultationId,
+      locale,
+      showTranslationAssist,
+    ]
+  );
+
+  const toggleTranslationListening = useCallback(() => {
+    if (!showTranslationAssist) {
       return;
     }
 
-    const remoteSource = audioContextRef.current.createMediaStreamSource(remoteStream);
-    remoteSource.connect(recordingDestinationRef.current);
-    remoteSourceConnectedRef.current = true;
-  }, []);
+    if (translationListening) {
+      recognitionRef.current?.stop();
+      setTranslationListening(false);
+      return;
+    }
+
+    const SpeechRecognitionConstructor =
+      typeof window !== "undefined"
+        ? (window as typeof window & {
+            SpeechRecognition?: BrowserSpeechRecognitionConstructor;
+            webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor;
+          }).SpeechRecognition ||
+          (window as typeof window & {
+            SpeechRecognition?: BrowserSpeechRecognitionConstructor;
+            webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor;
+          }).webkitSpeechRecognition
+        : undefined;
+
+    if (!SpeechRecognitionConstructor) {
+      setTranslationError(
+        locale === "zh-TW"
+          ? "目前瀏覽器不支援語音辨識，請改用手動輸入。"
+          : "Speech recognition is not supported in this browser."
+      );
+      return;
+    }
+
+    const recognition = new SpeechRecognitionConstructor();
+    recognition.lang = toSpeechLocale(assistSourceLanguage);
+    recognition.interimResults = true;
+    recognition.continuous = false;
+
+    recognition.onstart = () => setTranslationListening(true);
+    recognition.onend = () => setTranslationListening(false);
+    recognition.onerror = () => setTranslationListening(false);
+    recognition.onresult = (event) => {
+      let finalTranscript = "";
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        if (event.results[index].isFinal) {
+          finalTranscript += event.results[index][0].transcript;
+        }
+      }
+
+      if (finalTranscript.trim()) {
+        setTranslationInput(finalTranscript.trim());
+        void runTranslation(finalTranscript.trim());
+      }
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+  }, [
+    assistSourceLanguage,
+    locale,
+    runTranslation,
+    showTranslationAssist,
+    translationListening,
+  ]);
+
+  const speakTranslation = () => {
+    if (!translatedText || typeof window === "undefined") {
+      return;
+    }
+
+    if (speakingTranslation) {
+      window.speechSynthesis.cancel();
+      setSpeakingTranslation(false);
+      return;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(translatedText);
+    utterance.lang = toSpeechLocale(assistTargetLanguage);
+    utterance.onend = () => setSpeakingTranslation(false);
+    utterance.onerror = () => setSpeakingTranslation(false);
+    setSpeakingTranslation(true);
+    window.speechSynthesis.speak(utterance);
+  };
 
   useEffect(() => {
     if (status !== "active") {
@@ -275,7 +514,10 @@ export function CallWindow({
         const consultationRef = doc(db, "consultations", consultationId);
 
         if (role === "worker") {
-          const callerCandidatesRef = collection(consultationRef, "callerCandidates");
+          const callerCandidatesRef = collection(
+            consultationRef,
+            "callerCandidates"
+          );
 
           pc.onicecandidate = (event) => {
             if (event.candidate) {
@@ -295,7 +537,15 @@ export function CallWindow({
 
           const unsubAnswer = onSnapshot(consultationRef, (snapshot) => {
             const data = snapshot.data();
-            if (!data) return;
+            if (!data) {
+              return;
+            }
+
+            setCallMeta({
+              workerLanguage: data.workerLanguage || workerLanguage,
+              workerNationality: data.workerNationality || workerNationality,
+              translationMode: data.translationMode || translationMode,
+            });
 
             if (data.status === "cancelled") {
               setStatus("ended");
@@ -326,7 +576,10 @@ export function CallWindow({
           );
           unsubscribers.push(unsubCalleeCandidates);
         } else {
-          const calleeCandidatesRef = collection(consultationRef, "calleeCandidates");
+          const calleeCandidatesRef = collection(
+            consultationRef,
+            "calleeCandidates"
+          );
 
           pc.onicecandidate = (event) => {
             if (event.candidate) {
@@ -338,6 +591,16 @@ export function CallWindow({
 
           const consultationSnap = await getDoc(consultationRef);
           const consultationData = consultationSnap.data();
+
+          if (consultationData) {
+            setCallMeta({
+              workerLanguage: consultationData.workerLanguage || workerLanguage,
+              workerNationality:
+                consultationData.workerNationality || workerNationality,
+              translationMode:
+                consultationData.translationMode || translationMode,
+            });
+          }
 
           if (consultationData?.offer) {
             await pc.setRemoteDescription(
@@ -377,10 +640,17 @@ export function CallWindow({
 
           const unsubEnd = onSnapshot(consultationRef, (snapshot) => {
             const data = snapshot.data();
-            if (
-              data &&
-              (data.status === "completed" || data.status === "cancelled")
-            ) {
+            if (!data) {
+              return;
+            }
+
+            setCallMeta({
+              workerLanguage: data.workerLanguage || workerLanguage,
+              workerNationality: data.workerNationality || workerNationality,
+              translationMode: data.translationMode || translationMode,
+            });
+
+            if (data.status === "completed" || data.status === "cancelled") {
               void endCall(false);
             }
           });
@@ -407,6 +677,9 @@ export function CallWindow({
     onError,
     role,
     setupRecordingMix,
+    translationMode,
+    workerLanguage,
+    workerNationality,
   ]);
 
   const toggleMute = () => {
@@ -420,78 +693,212 @@ export function CallWindow({
   };
 
   const currentCharge = Math.max(1, Math.ceil(elapsed / 60)) * ratePerMinute;
+  const workerLanguageLabel = callMeta.workerLanguage
+    ? localeNames[callMeta.workerLanguage]
+    : "";
 
   if (status === "ended") {
     return null;
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 px-4 backdrop-blur-sm">
-      <div className="w-full max-w-sm rounded-[2rem] border border-white/30 bg-white p-6 shadow-[0_30px_90px_rgba(15,23,42,0.28)]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 px-4 py-6 backdrop-blur-sm">
+      <div
+        className={`w-full rounded-[2rem] border border-white/30 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.28)] ${
+          showTranslationAssist ? "max-w-5xl" : "max-w-md"
+        }`}
+      >
         <audio ref={remoteAudioRef} autoPlay playsInline />
 
-        <div className="text-center">
-          <div
-            className={`mx-auto flex h-20 w-20 items-center justify-center rounded-full ${
-              status === "active" ? "animate-pulse bg-emerald-100" : "bg-slate-100"
-            }`}
-          >
-            {status === "active" ? (
-              <Clock className="h-10 w-10 text-emerald-600" />
-            ) : (
-              <Loader2 className="h-10 w-10 animate-spin text-slate-400" />
-            )}
+        <div className={`grid gap-0 ${showTranslationAssist ? "lg:grid-cols-[420px_minmax(0,1fr)]" : ""}`}>
+          <div className="p-6">
+            <div className="text-center">
+              <div
+                className={`mx-auto flex h-20 w-20 items-center justify-center rounded-full ${
+                  status === "active" ? "animate-pulse bg-emerald-100" : "bg-slate-100"
+                }`}
+              >
+                {status === "active" ? (
+                  <Clock className="h-10 w-10 text-emerald-600" />
+                ) : (
+                  <Loader2 className="h-10 w-10 animate-spin text-slate-400" />
+                )}
+              </div>
+
+              <p className="mt-4 text-lg font-semibold text-slate-900">{peerName}</p>
+              <p className="mt-1 text-sm text-slate-500">
+                {ratePerMinute} {t.call.perMin}
+              </p>
+
+              <div className="mt-4 flex flex-wrap justify-center gap-2">
+                {callMeta.workerNationality ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600">
+                    <Globe2 className="h-3.5 w-3.5" />
+                    {callMeta.workerNationality}
+                  </span>
+                ) : null}
+                {workerLanguageLabel ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-100 px-3 py-1 text-xs text-sky-700">
+                    <Languages className="h-3.5 w-3.5" />
+                    {workerLanguageLabel}
+                  </span>
+                ) : null}
+              </div>
+
+              {status === "connecting" ? (
+                <p className="mt-3 text-sm text-slate-400">{t.call.connecting}</p>
+              ) : null}
+              {status === "waiting" ? (
+                <p className="mt-3 text-sm text-amber-600">
+                  {role === "worker" ? t.call.waitingLawyer : t.call.waitingWorker}
+                </p>
+              ) : null}
+              {status === "active" ? (
+                <div className="mt-4 space-y-1">
+                  <p className="text-3xl font-bold tabular-nums text-slate-900">
+                    {formatTime(elapsed)}
+                  </p>
+                  <p className="text-sm text-slate-500">
+                    {t.call.charged}: {currentCharge} {t.common.pts}
+                  </p>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="mt-8 flex items-center justify-center gap-6">
+              <button
+                type="button"
+                onClick={toggleMute}
+                className={`flex h-14 w-14 items-center justify-center rounded-full transition ${
+                  muted
+                    ? "bg-amber-100 text-amber-700"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+                title={muted ? t.call.unmute : t.call.mute}
+              >
+                {muted ? (
+                  <MicOff className="h-6 w-6" />
+                ) : (
+                  <Mic className="h-6 w-6" />
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  void endCall(true);
+                }}
+                className="flex h-16 w-16 items-center justify-center rounded-full bg-rose-500 text-white shadow-lg transition hover:bg-rose-600"
+                title={t.call.endCall}
+              >
+                <PhoneOff className="h-7 w-7" />
+              </button>
+            </div>
           </div>
 
-          <p className="mt-4 text-lg font-semibold text-slate-900">{peerName}</p>
-          <p className="mt-1 text-sm text-slate-500">
-            {ratePerMinute} {t.call.perMin}
-          </p>
+          {showTranslationAssist ? (
+            <div className="border-t border-slate-200 bg-slate-50/70 p-6 lg:border-l lg:border-t-0">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.28em] text-slate-400">
+                    Live Assist
+                  </p>
+                  <h3 className="mt-2 text-xl font-semibold text-slate-900">
+                    通話翻譯輔助
+                  </h3>
+                  <p className="mt-2 text-sm leading-7 text-slate-500">
+                    先將你要說的內容輸入或語音辨識，再快速翻成對方語言。這是字幕式輔助，不會直接改變雙方原始音訊。
+                  </p>
+                </div>
+                <div className="rounded-full bg-white px-3 py-1 text-xs text-slate-500 shadow-sm">
+                  {localeNames[assistSourceLanguage as SupportedLocale] || assistSourceLanguage}
+                  {" → "}
+                  {localeNames[assistTargetLanguage as SupportedLocale] || assistTargetLanguage}
+                </div>
+              </div>
 
-          {status === "connecting" ? (
-            <p className="mt-3 text-sm text-slate-400">{t.call.connecting}</p>
-          ) : null}
-          {status === "waiting" ? (
-            <p className="mt-3 text-sm text-amber-600">
-              {role === "worker" ? t.call.waitingLawyer : t.call.waitingWorker}
-            </p>
-          ) : null}
-          {status === "active" ? (
-            <div className="mt-4 space-y-1">
-              <p className="text-3xl font-bold tabular-nums text-slate-900">
-                {formatTime(elapsed)}
-              </p>
-              <p className="text-sm text-slate-500">
-                {t.call.charged}: {currentCharge} {t.common.pts}
-              </p>
+              <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4 shadow-sm">
+                  <p className="text-sm font-medium text-slate-900">你的發言</p>
+                  <textarea
+                    value={translationInput}
+                    onChange={(event) => setTranslationInput(event.target.value)}
+                    rows={7}
+                    placeholder={
+                      locale === "zh-TW"
+                        ? "輸入你想對對方說的內容，或用麥克風做語音辨識。"
+                        : "Type what you want to say or use speech recognition."
+                    }
+                    className="mt-3 w-full rounded-[1.1rem] border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-[rgba(184,100,67,0.45)] focus:ring-4 focus:ring-[rgba(184,100,67,0.08)]"
+                  />
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={toggleTranslationListening}
+                      className={`inline-flex items-center gap-2 rounded-[1rem] px-4 py-2.5 text-sm font-medium transition ${
+                        translationListening
+                          ? "bg-rose-100 text-rose-700"
+                          : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                      }`}
+                    >
+                      {translationListening ? (
+                        <Square className="h-4 w-4" />
+                      ) : (
+                        <AudioLines className="h-4 w-4" />
+                      )}
+                      {translationListening ? "停止收音" : "語音辨識"}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => void runTranslation(translationInput)}
+                      disabled={!translationInput.trim() || translationLoading}
+                      className={`inline-flex items-center gap-2 rounded-[1rem] px-4 py-2.5 text-sm font-medium transition ${
+                        translationInput.trim() && !translationLoading
+                          ? "bg-slate-900 text-white hover:bg-slate-800"
+                          : "cursor-not-allowed bg-slate-200 text-slate-500"
+                      }`}
+                    >
+                      {translationLoading ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Send className="h-4 w-4" />
+                      )}
+                      立即翻譯
+                    </button>
+                  </div>
+                </div>
+
+                <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-medium text-slate-900">翻譯結果</p>
+                    <button
+                      type="button"
+                      onClick={speakTranslation}
+                      disabled={!translatedText}
+                      className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                        translatedText
+                          ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+                          : "cursor-not-allowed bg-slate-100 text-slate-400"
+                      }`}
+                    >
+                      <Volume2 className="h-3.5 w-3.5" />
+                      {speakingTranslation ? "停止朗讀" : "朗讀"}
+                    </button>
+                  </div>
+
+                  <div className="mt-3 min-h-[208px] rounded-[1.1rem] bg-slate-50 px-4 py-4 text-sm leading-7 text-slate-700">
+                    {translatedText || "翻譯結果會顯示在這裡。"}
+                  </div>
+
+                  {translationError ? (
+                    <p className="mt-3 text-sm text-rose-600">{translationError}</p>
+                  ) : null}
+                </div>
+              </div>
             </div>
           ) : null}
-        </div>
-
-        <div className="mt-8 flex items-center justify-center gap-6">
-          <button
-            type="button"
-            onClick={toggleMute}
-            className={`flex h-14 w-14 items-center justify-center rounded-full transition ${
-              muted
-                ? "bg-amber-100 text-amber-700"
-                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-            }`}
-            title={muted ? t.call.unmute : t.call.mute}
-          >
-            {muted ? <MicOff className="h-6 w-6" /> : <Mic className="h-6 w-6" />}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              void endCall(true);
-            }}
-            className="flex h-16 w-16 items-center justify-center rounded-full bg-red-500 text-white shadow-lg transition hover:bg-red-600"
-            title={t.call.endCall}
-          >
-            <PhoneOff className="h-7 w-7" />
-          </button>
         </div>
       </div>
     </div>

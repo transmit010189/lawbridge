@@ -18,6 +18,8 @@ export interface User {
   language: SupportedLocale;
   nationality?: string;
   status: "active" | "suspended" | "pending";
+  emailVerified?: boolean;
+  testCreditsGrantedAt?: string;
   gps?: { lat: number; lng: number };
   createdAt: string;
   updatedAt: string;
@@ -29,6 +31,21 @@ export interface LawyerProfile {
   fullName: string;
   licenseNo: string;
   licenseStatus: "pending" | "verified" | "rejected" | "offboarded";
+  verificationStage?:
+    | "draft"
+    | "documents_submitted"
+    | "manual_review"
+    | "video_review_required"
+    | "verified";
+  verificationId?: string;
+  verifiedName?: string;
+  payoutBankLast4?: string;
+  payoutAccountVerified?: boolean;
+  payoutScheduleNote?: string;
+  payoutEtaNote?: string;
+  complianceAcceptedAt?: string;
+  complianceVersion?: string;
+  translationAssistEnabled?: boolean;
   specialties: string[];
   serviceLanguages: SupportedLocale[];
   ratingAvg: number;
@@ -43,11 +60,21 @@ export interface LawyerProfile {
 // -- Lawyer Verification (Firestore: lawyer_verifications/{id}) --
 export interface LawyerVerification {
   uid: string;
-  ocrImagePath: string;
-  ocrRawText: string;
+  certificateImagePath: string;
+  certificateOcrText: string;
+  certificateName?: string;
+  certificateLicenseNo?: string;
+  bankImagePath?: string;
+  bankOcrText?: string;
+  bankAccountHolderName?: string;
+  bankAccountLast4?: string;
+  nameMatches?: boolean;
   licenseNoSubmitted: string;
   govCheckResult: "matched" | "manual_review" | "failed";
   ndaAccepted: boolean;
+  complianceAcceptedAt?: string;
+  complianceVersion?: string;
+  videoReviewRequired?: boolean;
   reviewerId?: string;
   reviewNotes?: string;
   createdAt: string;
@@ -59,6 +86,8 @@ export interface Wallet {
   uid: string;
   pointsBalance: number;
   currency: "TWD";
+  availablePayoutPoints?: number;
+  pendingPayoutPoints?: number;
   updatedAt: string;
 }
 
@@ -111,6 +140,9 @@ export interface Consultation {
   id: string;
   workerUid: string;
   lawyerUid: string;
+  workerDisplayName?: string;
+  workerLanguage?: SupportedLocale;
+  workerNationality?: string;
   status: "requested" | "matched" | "in_progress" | "completed" | "cancelled";
   mode: "audio" | "text";
   ratePerMinute?: number;
@@ -122,6 +154,7 @@ export interface Consultation {
   lawyerPayoutPoints: number;
   languageFrom: SupportedLocale;
   languageTo: SupportedLocale;
+  translationMode?: "none" | "subtitle_assist";
   recordingPath?: string;
   recordingHash?: string;
   recordingCount?: number;

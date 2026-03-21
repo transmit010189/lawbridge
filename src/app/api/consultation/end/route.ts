@@ -6,6 +6,8 @@ import {
 } from "@/lib/auth/requireUser";
 import { FieldValue } from "firebase-admin/firestore";
 
+const BASE_RATE_PER_MINUTE = 25;
+
 export async function POST(req: NextRequest) {
   try {
     const authUser = await requireAuthenticatedUser(req);
@@ -40,7 +42,33 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const ratePerMinute = data.ratePerMinute || 10;
+    if ((data.status === "requested" || data.status === "matched") && Number(durationSec) <= 0) {
+      await consultRef.set(
+        {
+          status: "cancelled",
+          endedAt: new Date().toISOString(),
+          chargePoints: 0,
+          platformFeePoints: 0,
+          lawyerPayoutPoints: 0,
+        },
+        { merge: true }
+      );
+
+      return NextResponse.json({
+        success: true,
+        cancelled: true,
+        durationSec: 0,
+        minutes: 0,
+        chargePoints: 0,
+        platformFeePoints: 0,
+        lawyerPayoutPoints: 0,
+      });
+    }
+
+    const ratePerMinute = Math.max(
+      BASE_RATE_PER_MINUTE,
+      Number(data.ratePerMinute) || BASE_RATE_PER_MINUTE
+    );
     const minutes = Math.max(1, Math.ceil(durationSec / 60));
     const totalCharge = minutes * ratePerMinute;
     const platformFee = Math.ceil(totalCharge * 0.2);
@@ -50,6 +78,10 @@ export async function POST(req: NextRequest) {
     const lawyerUid = data.lawyerUid;
     const now = new Date().toISOString();
 
+    let actualCharge = totalCharge;
+    let actualPlatformFee = platformFee;
+    let actualLawyerPayout = lawyerPayout;
+
     await adminDb.runTransaction(async (txn) => {
       const workerWalletRef = adminDb.doc(`wallets/${workerUid}`);
       const lawyerWalletRef = adminDb.doc(`wallets/${lawyerUid}`);
@@ -57,9 +89,9 @@ export async function POST(req: NextRequest) {
       const lawyerWallet = await txn.get(lawyerWalletRef);
 
       const workerBalance = workerWallet.data()?.pointsBalance ?? 0;
-      const actualCharge = Math.min(totalCharge, workerBalance);
-      const actualPlatformFee = Math.ceil(actualCharge * 0.2);
-      const actualLawyerPayout = actualCharge - actualPlatformFee;
+      actualCharge = Math.min(totalCharge, workerBalance);
+      actualPlatformFee = Math.ceil(actualCharge * 0.2);
+      actualLawyerPayout = actualCharge - actualPlatformFee;
 
       txn.update(workerWalletRef, {
         pointsBalance: FieldValue.increment(-actualCharge),
@@ -69,12 +101,17 @@ export async function POST(req: NextRequest) {
       if (lawyerWallet.exists) {
         txn.update(lawyerWalletRef, {
           pointsBalance: FieldValue.increment(actualLawyerPayout),
+          pendingPayoutPoints: FieldValue.increment(actualLawyerPayout),
+          availablePayoutPoints:
+            (lawyerWallet.data()?.availablePayoutPoints ?? 0) + actualLawyerPayout,
           updatedAt: now,
         });
       } else {
         txn.set(lawyerWalletRef, {
           uid: lawyerUid,
           pointsBalance: actualLawyerPayout,
+          pendingPayoutPoints: actualLawyerPayout,
+          availablePayoutPoints: actualLawyerPayout,
           currency: "TWD",
           updatedAt: now,
         });
@@ -130,9 +167,9 @@ export async function POST(req: NextRequest) {
       success: true,
       durationSec,
       minutes,
-      chargePoints: totalCharge,
-      platformFeePoints: platformFee,
-      lawyerPayoutPoints: lawyerPayout,
+      chargePoints: actualCharge,
+      platformFeePoints: actualPlatformFee,
+      lawyerPayoutPoints: actualLawyerPayout,
     });
   } catch (err) {
     if (err instanceof RequestAuthError) {

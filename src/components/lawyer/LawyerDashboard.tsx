@@ -1,73 +1,115 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { collection, query, where, orderBy, getDocs, limit } from "firebase/firestore";
+import { useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
-  Clock,
-  DollarSign,
-  Phone,
-  Star,
+  Clock3,
+  Coins,
+  ShieldCheck,
+  Sparkles,
   TrendingUp,
-  Users,
+  Wallet,
 } from "lucide-react";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  where,
+} from "firebase/firestore";
 import { useAuthContext } from "@/components/auth/AuthProvider";
-import { SkeletonStatCards, SkeletonRows } from "@/components/Skeleton";
+import { SkeletonRows, SkeletonStatCards } from "@/components/Skeleton";
 import { db } from "@/lib/firebase/client";
-import { useTranslation } from "@/hooks/useTranslation";
-import type { Consultation, SupportedLocale, WalletTransaction } from "@/types";
+import type { Consultation, LawyerProfile, SupportedLocale, Wallet as WalletType, WalletTransaction } from "@/types";
 
 interface Props {
   locale: SupportedLocale;
   onNavigate: (tab: string) => void;
 }
 
+function copy(locale: SupportedLocale) {
+  const zh = locale === "zh-TW";
+
+  return {
+    title: zh ? "律師收益工作台" : "Lawyer earnings desk",
+    subtitle: zh
+      ? "把 KYC、分潤、待撥款與近期通話集中在同一個畫面，讓你知道現在上線能賺多少。"
+      : "Track KYC, pending payout, and recent calls in one place.",
+    payoutWindow: zh ? "每週二 / 週五 14:00 對帳" : "Tue / Fri 14:00 payout batch",
+    kycReady: zh ? "KYC 已完成" : "KYC complete",
+    kycPending: zh ? "KYC 待完成" : "KYC pending",
+    totalEarned: zh ? "累計收入" : "Lifetime earned",
+    todayEarned: zh ? "今日收益" : "Today earned",
+    monthlyEarned: zh ? "本月收益" : "This month",
+    totalCalls: zh ? "完成通話" : "Completed calls",
+    totalMinutes: zh ? "通話分鐘" : "Minutes",
+    pendingPayout: zh ? "待撥款" : "Pending payout",
+    availableWallet: zh ? "收益錢包" : "Earnings wallet",
+    nextBatch: zh ? "下次撥款節奏" : "Next payout batch",
+    goOnline: zh ? "前往律師工作台" : "Open lawyer desk",
+    viewWallet: zh ? "查看收益錢包" : "View wallet",
+    recentCalls: zh ? "近期完成案件" : "Recent completed calls",
+    noCalls: zh ? "目前還沒有完成中的收益紀錄。完成第一通後，這裡會顯示入帳與分潤。" : "No completed calls yet.",
+    eta: zh ? "一般預估 T+2 個工作日入銀行帳戶" : "Usually arrives in T+2 business days",
+    payoutReady: zh ? "撥款追蹤已啟用" : "Payout tracking ready",
+  };
+}
+
 export function LawyerDashboard({ locale, onNavigate }: Props) {
   const { user } = useAuthContext();
-  const t = useTranslation(locale);
+  const c = useMemo(() => copy(locale), [locale]);
+  const [profile, setProfile] = useState<LawyerProfile | null>(null);
+  const [wallet, setWallet] = useState<WalletType | null>(null);
   const [consultations, setConsultations] = useState<Consultation[]>([]);
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user) return;
-    async function fetchData() {
-      try {
-        const consultQ = query(
-          collection(db, "consultations"),
-          where("lawyerUid", "==", user!.uid),
-          where("status", "==", "completed"),
-          orderBy("createdAt", "desc"),
-          limit(50)
-        );
-        const consultSnap = await getDocs(consultQ);
-        setConsultations(consultSnap.docs.map((d) => d.data() as Consultation));
+    const uid = user?.uid;
+    if (!uid) {
+      return;
+    }
+    const currentUid: string = uid;
 
-        const txnQ = query(
-          collection(db, "wallet_transactions"),
-          where("uid", "==", user!.uid),
-          where("type", "==", "lawyer_payout"),
-          orderBy("createdAt", "desc"),
-          limit(50)
-        );
-        const txnSnap = await getDocs(txnQ);
-        setTransactions(txnSnap.docs.map((d) => d.data() as WalletTransaction));
-      } catch {
-        // Index may not exist — silently fail
+    async function fetchData() {
+      setLoading(true);
+      try {
+        const [profileSnap, walletSnap, consultationSnap, txnSnap] = await Promise.all([
+          getDoc(doc(db, "lawyer_profiles", currentUid)),
+          getDoc(doc(db, "wallets", currentUid)),
+          getDocs(query(collection(db, "consultations"), where("lawyerUid", "==", currentUid))),
+          getDocs(query(collection(db, "wallet_transactions"), where("uid", "==", currentUid))),
+        ]);
+
+        setProfile(profileSnap.exists() ? (profileSnap.data() as LawyerProfile) : null);
+        setWallet(walletSnap.exists() ? (walletSnap.data() as WalletType) : null);
+
+        const consultationRows = consultationSnap.docs
+          .map((snapshot) => snapshot.data() as Consultation)
+          .filter((item) => item.status === "completed")
+          .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+        setConsultations(consultationRows);
+
+        const transactionRows = txnSnap.docs
+          .map((snapshot) => snapshot.data() as WalletTransaction)
+          .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+        setTransactions(transactionRows);
       } finally {
         setLoading(false);
       }
     }
-    fetchData();
-  }, [user]);
+
+    void fetchData();
+  }, [user?.uid]);
 
   if (loading) {
     return (
       <div className="mx-auto max-w-6xl space-y-5">
-        <div className="animate-pulse brand-hero rounded-[1.8rem] px-6 py-7">
-          <div className="h-5 w-24 rounded-lg bg-white/20" />
-          <div className="mt-4 h-8 w-48 rounded-lg bg-white/20" />
-          <div className="mt-3 h-4 w-72 rounded-lg bg-white/20" />
+        <div className="animate-pulse rounded-[1.8rem] bg-slate-900 px-6 py-8">
+          <div className="h-5 w-28 rounded-lg bg-white/10" />
+          <div className="mt-4 h-8 w-64 rounded-lg bg-white/10" />
+          <div className="mt-3 h-4 w-96 rounded-lg bg-white/10" />
         </div>
         <SkeletonStatCards />
         <SkeletonRows count={3} />
@@ -75,114 +117,93 @@ export function LawyerDashboard({ locale, onNavigate }: Props) {
     );
   }
 
-  const totalEarnings = transactions.reduce((sum, txn) => sum + txn.points, 0);
-  const totalCalls = consultations.length;
-  const totalMinutes = Math.ceil(consultations.reduce((sum, c) => sum + c.durationSec, 0) / 60);
-  const totalPlatformFees = consultations.reduce((sum, c) => sum + c.platformFeePoints, 0);
-
+  const payoutTransactions = transactions.filter((item) => item.type === "lawyer_payout");
+  const totalEarned = payoutTransactions.reduce((sum, item) => sum + item.points, 0);
+  const totalMinutes = Math.ceil(
+    consultations.reduce((sum, item) => sum + (item.durationSec || 0), 0) / 60
+  );
   const today = new Date().toISOString().slice(0, 10);
-  const todayConsults = consultations.filter((c) => c.createdAt?.startsWith(today));
-  const todayEarnings = todayConsults.reduce((sum, c) => sum + c.lawyerPayoutPoints, 0);
-
-  const thisMonth = new Date().toISOString().slice(0, 7);
-  const monthConsults = consultations.filter((c) => c.createdAt?.startsWith(thisMonth));
-  const monthEarnings = monthConsults.reduce((sum, c) => sum + c.lawyerPayoutPoints, 0);
-
-  const recentCalls = consultations.slice(0, 5);
+  const month = new Date().toISOString().slice(0, 7);
+  const todayEarned = consultations
+    .filter((item) => item.createdAt.startsWith(today))
+    .reduce((sum, item) => sum + item.lawyerPayoutPoints, 0);
+  const monthlyEarned = consultations
+    .filter((item) => item.createdAt.startsWith(month))
+    .reduce((sum, item) => sum + item.lawyerPayoutPoints, 0);
+  const pendingPayout = wallet?.pendingPayoutPoints ?? 0;
+  const availableWallet = wallet?.pointsBalance ?? 0;
+  const averageRating =
+    profile?.ratingCount && profile.ratingCount > 0
+      ? profile.ratingAvg.toFixed(1)
+      : locale === "zh-TW"
+        ? "尚無"
+        : "N/A";
+  const recentCalls = consultations.slice(0, 4);
 
   return (
     <div className="mx-auto max-w-6xl space-y-5">
-      {/* Header */}
-      <div className="brand-hero overflow-hidden rounded-[1.8rem] px-6 py-7 text-white">
-        <div className="max-w-2xl">
-          <span className="inline-flex rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs uppercase tracking-[0.32em] text-white/78">
-            LawBridge
-          </span>
-          <h2 className="brand-title mt-4 text-3xl font-semibold">{t.dashboard.title}</h2>
-          <p className="mt-3 text-sm leading-7 text-white/84">{t.dashboard.subtitle}</p>
+      <div className="overflow-hidden rounded-[1.9rem] border border-slate-200 bg-white shadow-sm">
+        <div className="bg-[radial-gradient(circle_at_top_left,_rgba(251,191,36,0.18),_transparent_36%),linear-gradient(135deg,#0f172a,#111827)] px-6 py-7 text-white">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+            <div className="max-w-2xl">
+              <p className="text-xs uppercase tracking-[0.32em] text-white/60">LawBridge Counsel</p>
+              <h2 className="mt-3 text-3xl font-semibold">{c.title}</h2>
+              <p className="mt-3 text-sm leading-7 text-white/80">{c.subtitle}</p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <HeroBadge
+                icon={<ShieldCheck className="h-4 w-4" />}
+                label={profile?.licenseStatus === "verified" ? c.kycReady : c.kycPending}
+              />
+              <HeroBadge
+                icon={<Coins className="h-4 w-4" />}
+                label={`${c.pendingPayout}: ${pendingPayout}`}
+              />
+              <HeroBadge icon={<Sparkles className="h-4 w-4" />} label={c.payoutReady} />
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Stats Grid */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          icon={<DollarSign className="h-5 w-5 text-emerald-600" />}
-          label={t.dashboard.netIncome}
-          value={`${totalEarnings}`}
-          suffix={t.common.pts}
-          subtext={`${t.dashboard.todayStats}: +${todayEarnings} | ${t.dashboard.monthStats}: +${monthEarnings}`}
-          accent="emerald"
-        />
-        <StatCard
-          icon={<Phone className="h-5 w-5 text-sky-600" />}
-          label={t.dashboard.totalCalls}
-          value={`${totalCalls}`}
-          suffix={t.dashboard.calls}
-          subtext={`${t.dashboard.todayStats}: ${todayConsults.length} | ${t.dashboard.monthStats}: ${monthConsults.length}`}
-          accent="sky"
-        />
-        <StatCard
-          icon={<Clock className="h-5 w-5 text-amber-600" />}
-          label={t.dashboard.totalMinutes}
-          value={`${totalMinutes}`}
-          suffix={t.common.min}
-          subtext={`${t.dashboard.platformFees}: ${totalPlatformFees} ${t.common.pts}`}
-          accent="amber"
-        />
-        <StatCard
-          icon={<Star className="h-5 w-5 text-purple-600" />}
-          label={t.dashboard.avgRating}
-          value={totalCalls > 0 ? "—" : t.dashboard.noRating}
-          suffix=""
-          subtext={`${totalCalls} ${t.dashboard.calls}`}
-          accent="purple"
-        />
+        <MetricCard icon={<Coins className="h-5 w-5 text-emerald-600" />} label={c.totalEarned} value={`${totalEarned}`} suffix={locale === "zh-TW" ? "點" : "pts"} subtext={`${c.todayEarned}: +${todayEarned}`} />
+        <MetricCard icon={<TrendingUp className="h-5 w-5 text-amber-600" />} label={c.monthlyEarned} value={`${monthlyEarned}`} suffix={locale === "zh-TW" ? "點" : "pts"} subtext={`${c.pendingPayout}: ${pendingPayout}`} />
+        <MetricCard icon={<Clock3 className="h-5 w-5 text-sky-600" />} label={c.totalMinutes} value={`${totalMinutes}`} suffix={locale === "zh-TW" ? "分" : "min"} subtext={`${c.totalCalls}: ${consultations.length}`} />
+        <MetricCard icon={<BarChart3 className="h-5 w-5 text-violet-600" />} label={locale === "zh-TW" ? "平均評分" : "Average rating"} value={averageRating} suffix="" subtext={`${profile?.ratingCount ?? 0} reviews`} />
       </div>
 
-      {/* Quick Actions + Recent Calls */}
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
-        {/* Recent Calls */}
-        <div className="rounded-[1.6rem] border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <BarChart3 className="h-5 w-5 text-sky-600" />
-              <h3 className="text-lg font-semibold text-slate-900">{t.dashboard.recentCalls}</h3>
-            </div>
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="rounded-[1.8rem] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="h-5 w-5 text-sky-600" />
+            <h3 className="text-lg font-semibold text-slate-900">{c.recentCalls}</h3>
           </div>
 
           {recentCalls.length === 0 ? (
             <div className="mt-4 rounded-[1.4rem] bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
-              <Users className="mx-auto h-8 w-8 text-slate-300" />
-              <p className="mt-3">{t.dashboard.noCalls}</p>
-              <button
-                type="button"
-                onClick={() => onNavigate("lawyers")}
-                className="mt-4 rounded-[1.2rem] bg-emerald-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-emerald-700"
-              >
-                {t.dashboard.goOnline}
-              </button>
+              {c.noCalls}
             </div>
           ) : (
-            <div className="mt-4 space-y-2">
-              {recentCalls.map((c) => (
-                <div key={c.id} className="flex items-center justify-between rounded-[1.2rem] bg-slate-50 px-4 py-3">
-                  <div>
-                    <p className="text-sm font-medium text-slate-800">
-                      {t.common.voiceConsultation}
-                    </p>
-                    <p className="text-xs text-slate-400">
-                      {new Date(c.createdAt).toLocaleString(locale === "zh-TW" ? "zh-TW" : "en")}
-                      {" · "}
-                      {Math.ceil(c.durationSec / 60)} {t.common.min}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-sm font-semibold text-emerald-600">
-                      +{c.lawyerPayoutPoints} {t.common.pts}
-                    </span>
-                    <p className="text-xs text-slate-400">
-                      {t.common.platformFee}: {c.platformFeePoints}
-                    </p>
+            <div className="mt-4 space-y-3">
+              {recentCalls.map((consultation) => (
+                <div key={consultation.id} className="rounded-[1.2rem] bg-slate-50 px-4 py-4">
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">
+                        {consultation.workerDisplayName || (locale === "zh-TW" ? "外勞諮詢" : "Worker consultation")}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {new Date(consultation.createdAt).toLocaleString(locale === "zh-TW" ? "zh-TW" : "en")}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-semibold text-emerald-600">
+                        +{consultation.lawyerPayoutPoints} {locale === "zh-TW" ? "點" : "pts"}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {Math.max(1, Math.ceil(consultation.durationSec / 60))} {locale === "zh-TW" ? "分鐘" : "min"}
+                      </p>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -190,37 +211,29 @@ export function LawyerDashboard({ locale, onNavigate }: Props) {
           )}
         </div>
 
-        {/* Quick Actions */}
-        <div className="space-y-4">
-          <div className="rounded-[1.6rem] border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm uppercase tracking-[0.28em] text-slate-400">{t.dashboard.quickActions}</p>
-            <div className="mt-4 space-y-2">
-              <QuickAction icon={<TrendingUp className="h-4 w-4" />} label={t.dashboard.goOnline} onClick={() => onNavigate("lawyers")} accent="emerald" />
-              <QuickAction icon={<Users className="h-4 w-4" />} label={t.dashboard.editProfile} onClick={() => onNavigate("lawyers")} accent="sky" />
-              <QuickAction icon={<DollarSign className="h-4 w-4" />} label={t.dashboard.viewWallet} onClick={() => onNavigate("wallet")} accent="amber" />
+        <div className="space-y-5">
+          <div className="rounded-[1.8rem] border border-slate-200 bg-white p-5 shadow-sm">
+            <p className="text-xs uppercase tracking-[0.28em] text-slate-400">{c.availableWallet}</p>
+            <p className="mt-3 text-3xl font-semibold text-slate-900">
+              {availableWallet}
+              <span className="ml-2 text-sm font-normal text-slate-500">
+                {locale === "zh-TW" ? "點" : "pts"}
+              </span>
+            </p>
+            <div className="mt-4 space-y-3 rounded-[1.3rem] bg-slate-50 px-4 py-4 text-sm text-slate-600">
+              <InfoRow label={c.pendingPayout} value={`${pendingPayout} ${locale === "zh-TW" ? "點" : "pts"}`} />
+              <InfoRow label={c.nextBatch} value={profile?.payoutScheduleNote || c.payoutWindow} />
+              <InfoRow label={locale === "zh-TW" ? "撥款備註" : "Payout note"} value={profile?.payoutEtaNote || c.eta} />
             </div>
           </div>
 
-          {/* Earnings Breakdown */}
-          <div className="rounded-[1.6rem] border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm uppercase tracking-[0.28em] text-slate-400">
-              {t.dashboard.earningsBreakdown}
+          <div className="rounded-[1.8rem] border border-slate-200 bg-white p-5 shadow-sm">
+            <p className="text-xs uppercase tracking-[0.28em] text-slate-400">
+              {locale === "zh-TW" ? "快速入口" : "Quick actions"}
             </p>
-            <div className="mt-4 space-y-3">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-600">{t.dashboard.totalEarnings}</span>
-                <span className="font-semibold text-slate-900">{totalEarnings + totalPlatformFees} {t.common.pts}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-600">{t.dashboard.platformFees}</span>
-                <span className="font-semibold text-red-500">-{totalPlatformFees} {t.common.pts}</span>
-              </div>
-              <div className="border-t border-slate-100 pt-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="font-medium text-slate-900">{t.dashboard.netIncome}</span>
-                  <span className="text-lg font-bold text-emerald-600">{totalEarnings} {t.common.pts}</span>
-                </div>
-              </div>
+            <div className="mt-4 space-y-2">
+              <ActionButton icon={<ShieldCheck className="h-4 w-4" />} label={c.goOnline} onClick={() => onNavigate("lawyers")} />
+              <ActionButton icon={<Wallet className="h-4 w-4" />} label={c.viewWallet} onClick={() => onNavigate("wallet")} />
             </div>
           </div>
         </div>
@@ -229,58 +242,71 @@ export function LawyerDashboard({ locale, onNavigate }: Props) {
   );
 }
 
-function StatCard({
+function MetricCard({
   icon,
   label,
   value,
   suffix,
   subtext,
-  accent,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string;
   suffix: string;
   subtext: string;
-  accent: "emerald" | "sky" | "amber" | "purple";
 }) {
-  const bgMap = { emerald: "bg-emerald-50", sky: "bg-sky-50", amber: "bg-amber-50", purple: "bg-purple-50" };
   return (
     <div className="rounded-[1.6rem] border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex items-center gap-3">
-        <div className={`flex h-10 w-10 items-center justify-center rounded-full ${bgMap[accent]}`}>
+        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-50">
           {icon}
         </div>
         <p className="text-sm text-slate-500">{label}</p>
       </div>
-      <p className="mt-3 text-2xl font-bold text-slate-900">
-        {value} <span className="text-sm font-normal text-slate-400">{suffix}</span>
+      <p className="mt-4 text-2xl font-bold text-slate-900">
+        {value}
+        {suffix ? <span className="ml-2 text-sm font-normal text-slate-500">{suffix}</span> : null}
       </p>
-      <p className="mt-1 text-xs text-slate-400">{subtext}</p>
+      <p className="mt-2 text-xs text-slate-400">{subtext}</p>
     </div>
   );
 }
 
-function QuickAction({
+function HeroBadge({ icon, label }: { icon: React.ReactNode; label: string }) {
+  return (
+    <div className="inline-flex items-center gap-2 rounded-full border border-white/16 bg-white/10 px-3 py-2 text-xs text-white/82">
+      {icon}
+      <span>{label}</span>
+    </div>
+  );
+}
+
+function ActionButton({
   icon,
   label,
   onClick,
-  accent,
 }: {
   icon: React.ReactNode;
   label: string;
   onClick: () => void;
-  accent: "emerald" | "sky" | "amber";
 }) {
-  const colorMap = { emerald: "text-emerald-600", sky: "text-sky-600", amber: "text-amber-600" };
   return (
     <button
       type="button"
       onClick={onClick}
       className="flex w-full items-center gap-3 rounded-[1.2rem] bg-slate-50 px-4 py-3 text-left text-sm text-slate-700 transition hover:bg-slate-100"
     >
-      <span className={colorMap[accent]}>{icon}</span>
+      {icon}
       {label}
     </button>
+  );
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <span className="text-slate-500">{label}</span>
+      <span className="text-right font-medium text-slate-900">{value}</span>
+    </div>
   );
 }

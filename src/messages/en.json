@@ -74,8 +74,8 @@
   },
   "login": {
     "eyebrow": "LawBridge",
-    "panelTitle": "Search regulations, review source notes, then decide the next legal step.",
-    "panelItems": ["RAG legal questions", "Lawyer directory", "Wallet and account access"],
+    "panelTitle": "You do not have to face labor disputes alone. We protect your rights in a language you understand.",
+    "panelItems": ["24H bilingual legal assistant", "Find a Taiwan lawyer who will speak up for you", "Transparent case wallet and payment tracking"],
     "title": "Login / Register",
     "description": "Sign in first. Language can be changed at any time from the menu.",
     "login": "Login",

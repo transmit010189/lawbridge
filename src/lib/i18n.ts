@@ -8,11 +8,11 @@ export const localeNames: Record<SupportedLocale, string> = {
   en: "English",
   id: "Bahasa Indonesia",
   vi: "Tiếng Việt",
-  th: "ภาษาไทย",
+  th: "ไทย",
 };
 
 export const localeFlags: Record<SupportedLocale, string> = {
-  "zh-TW": "繁中",
+  "zh-TW": "TW",
   en: "EN",
   id: "ID",
   vi: "VI",

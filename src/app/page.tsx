@@ -23,9 +23,11 @@ import { AiChatPage } from "@/components/consultation/AiChatPage";
 import { CallWindow } from "@/components/consultation/CallWindow";
 import { ConsultationRecordingPanel } from "@/components/consultation/ConsultationRecordingPanel";
 import { IncomingCallBanner } from "@/components/consultation/IncomingCallBanner";
+import { LawyerPayoutCelebration } from "@/components/consultation/LawyerPayoutCelebration";
 import { PostCallRating } from "@/components/consultation/PostCallRating";
 import { LawyerDashboard } from "@/components/lawyer/LawyerDashboard";
 import { LawyerListPage } from "@/components/lawyer/LawyerListPage";
+import { LawyerVerificationPage } from "@/components/lawyer/LawyerVerificationPage";
 import { LawyerWalletPage } from "@/components/wallet/LawyerWalletPage";
 import { WalletPage } from "@/components/wallet/WalletPage";
 import { authenticatedFetch } from "@/lib/api/authenticatedFetch";
@@ -34,7 +36,13 @@ import { locales } from "@/lib/i18n";
 import { useTranslation, interpolate } from "@/hooks/useTranslation";
 import type { SupportedLocale, Consultation } from "@/types";
 
-type Tab = "home" | "ai" | "lawyers" | "wallet" | "profile";
+type Tab =
+  | "home"
+  | "ai"
+  | "lawyers"
+  | "wallet"
+  | "profile"
+  | "lawyer-verification";
 
 export default function App() {
   return (
@@ -106,7 +114,8 @@ function HomePage({
     return requestedTab === "ai" ||
       requestedTab === "lawyers" ||
       requestedTab === "wallet" ||
-      requestedTab === "profile"
+      requestedTab === "profile" ||
+      requestedTab === "lawyer-verification"
       ? requestedTab
       : "home";
   });
@@ -117,6 +126,9 @@ function HomePage({
     ratePerMinute: number;
     role: "worker" | "lawyer";
     lawyerUid?: string;
+    workerLanguage?: SupportedLocale;
+    workerNationality?: string;
+    translationMode?: "none" | "subtitle_assist";
   } | null>(null);
   const [postCall, setPostCall] = useState<{
     consultationId: string;
@@ -124,6 +136,10 @@ function HomePage({
     lawyerName: string;
     durationSec: number;
     chargedPoints: number;
+  } | null>(null);
+  const [lawyerCelebration, setLawyerCelebration] = useState<{
+    earnedPoints: number;
+    durationSec: number;
   } | null>(null);
   const isLawyer = user?.role === "lawyer";
 
@@ -137,8 +153,6 @@ function HomePage({
           workerUid: user.uid,
           lawyerUid,
           ratePerMinute: rate,
-          languageFrom: locale,
-          languageTo: "zh-TW",
         }),
       });
       const data = await res.json();
@@ -151,9 +165,12 @@ function HomePage({
       setActiveCall({
         consultationId: data.consultationId,
         peerName: lawyerName,
-        ratePerMinute: rate,
+        ratePerMinute: data.ratePerMinute || rate,
         role: "worker",
         lawyerUid,
+        workerLanguage: data.workerLanguage || user.language || locale,
+        workerNationality: data.workerNationality || user.nationality || "",
+        translationMode: data.translationMode || "none",
       });
     } catch (err) {
       console.error("Start call error:", err);
@@ -164,6 +181,7 @@ function HomePage({
   const handleCallEnd = async (durationSec: number) => {
     if (!activeCall) return;
     const callInfo = { ...activeCall };
+    setActiveCall(null);
     try {
       const res = await authenticatedFetch("/api/consultation/end", {
         method: "POST",
@@ -184,10 +202,15 @@ function HomePage({
           chargedPoints: data.chargePoints || Math.max(1, Math.ceil(durationSec / 60)) * callInfo.ratePerMinute,
         });
       }
+      if (callInfo.role === "lawyer" && (data.lawyerPayoutPoints || 0) > 0) {
+        setLawyerCelebration({
+          earnedPoints: data.lawyerPayoutPoints,
+          durationSec,
+        });
+      }
     } catch (err) {
       console.error("End call error:", err);
     }
-    setActiveCall(null);
   };
 
   const noticeKey = user ? `lawbridge-lawyer-notice:${user.uid}` : "";
@@ -342,6 +365,13 @@ function HomePage({
                 locale={locale}
                 viewerRole={user?.role ?? "worker"}
                 onStartCall={handleStartCall}
+                onNavigate={(tab) => setCurrentTab(tab as Tab)}
+              />
+            ) : null}
+            {currentTab === "lawyer-verification" ? (
+              <LawyerVerificationPage
+                locale={locale}
+                onBack={() => setCurrentTab("lawyers")}
               />
             ) : null}
             {currentTab === "wallet" ? (
@@ -389,9 +419,12 @@ function HomePage({
           onAccept={(call) => {
             setActiveCall({
               consultationId: call.consultationId,
-              peerName: "Worker",
+              peerName: call.workerDisplayName || "Worker",
               ratePerMinute: call.ratePerMinute,
               role: "lawyer",
+              workerLanguage: call.workerLanguage,
+              workerNationality: call.workerNationality,
+              translationMode: call.translationMode,
             });
           }}
         />
@@ -404,6 +437,9 @@ function HomePage({
           peerName={activeCall.peerName}
           ratePerMinute={activeCall.ratePerMinute}
           locale={locale}
+          workerLanguage={activeCall.workerLanguage}
+          workerNationality={activeCall.workerNationality}
+          translationMode={activeCall.translationMode}
           onEnd={handleCallEnd}
           onError={(msg) => {
             console.error("Call error:", msg);
@@ -422,6 +458,19 @@ function HomePage({
           chargedPoints={postCall.chargedPoints}
           locale={locale}
           onClose={() => setPostCall(null)}
+        />
+      ) : null}
+
+      {lawyerCelebration ? (
+        <LawyerPayoutCelebration
+          earnedPoints={lawyerCelebration.earnedPoints}
+          durationSec={lawyerCelebration.durationSec}
+          locale={locale}
+          onClose={() => setLawyerCelebration(null)}
+          onViewWallet={() => {
+            setLawyerCelebration(null);
+            setCurrentTab("wallet");
+          }}
         />
       ) : null}
     </div>
@@ -472,6 +521,10 @@ function ProfilePage({ locale }: { locale: SupportedLocale }) {
   const t = useTranslation(locale);
   const [consultations, setConsultations] = useState<Consultation[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
+  const selectedConsultationId =
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("consultationId")
+      : "";
 
   useEffect(() => {
     if (!user) return;
@@ -556,7 +609,14 @@ function ProfilePage({ locale }: { locale: SupportedLocale }) {
         ) : (
           <div className="mt-4 space-y-2">
             {consultations.map((c) => (
-              <div key={c.id} className="rounded-[1.2rem] bg-slate-50 px-4 py-4">
+              <div
+                key={c.id}
+                className={`rounded-[1.2rem] px-4 py-4 ${
+                  c.id === selectedConsultationId
+                    ? "border border-sky-200 bg-sky-50"
+                    : "bg-slate-50"
+                }`}
+              >
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <p className="text-sm font-medium text-slate-800">
