@@ -2,15 +2,16 @@
 
 import { useEffect, useState } from "react";
 import {
+  BarChart3,
+  History,
   Loader2,
   LogOut,
   MessageCircle,
   Phone,
   Scale,
+  Shield,
   User,
   Wallet,
-  History,
-  Shield,
 } from "lucide-react";
 import { doc, getDoc, collection, query, where, orderBy, getDocs, limit } from "firebase/firestore";
 import { AuthProvider, useAuthContext } from "@/components/auth/AuthProvider";
@@ -21,7 +22,9 @@ import { AiChatPage } from "@/components/consultation/AiChatPage";
 import { CallWindow } from "@/components/consultation/CallWindow";
 import { IncomingCallBanner } from "@/components/consultation/IncomingCallBanner";
 import { PostCallRating } from "@/components/consultation/PostCallRating";
+import { LawyerDashboard } from "@/components/lawyer/LawyerDashboard";
 import { LawyerListPage } from "@/components/lawyer/LawyerListPage";
+import { LawyerWalletPage } from "@/components/wallet/LawyerWalletPage";
 import { WalletPage } from "@/components/wallet/WalletPage";
 import { db } from "@/lib/firebase/client";
 import { locales } from "@/lib/i18n";
@@ -289,17 +292,21 @@ function HomePage({
         !window.localStorage.getItem(noticeKey)
     );
 
-  const navItems = [
-    { key: "home" as const, label: copy.home, icon: <Scale className="h-5 w-5" /> },
-    { key: "ai" as const, label: copy.ai, icon: <MessageCircle className="h-5 w-5" /> },
-    {
-      key: "lawyers" as const,
-      label: isLawyer ? copy.lawyersLawyer : copy.lawyersWorker,
-      icon: <Phone className="h-5 w-5" />,
-    },
-    { key: "wallet" as const, label: copy.wallet, icon: <Wallet className="h-5 w-5" /> },
-    { key: "profile" as const, label: copy.profile, icon: <User className="h-5 w-5" /> },
-  ];
+  const navItems = isLawyer
+    ? [
+        { key: "home" as const, label: locale === "zh-TW" ? "總覽" : "Dashboard", icon: <BarChart3 className="h-5 w-5" /> },
+        { key: "lawyers" as const, label: copy.lawyersLawyer, icon: <Phone className="h-5 w-5" /> },
+        { key: "ai" as const, label: locale === "zh-TW" ? "法規查詢" : "Legal AI", icon: <MessageCircle className="h-5 w-5" /> },
+        { key: "wallet" as const, label: locale === "zh-TW" ? "收入" : "Earnings", icon: <Wallet className="h-5 w-5" /> },
+        { key: "profile" as const, label: copy.profile, icon: <User className="h-5 w-5" /> },
+      ]
+    : [
+        { key: "home" as const, label: copy.home, icon: <Scale className="h-5 w-5" /> },
+        { key: "ai" as const, label: copy.ai, icon: <MessageCircle className="h-5 w-5" /> },
+        { key: "lawyers" as const, label: copy.lawyersWorker, icon: <Phone className="h-5 w-5" /> },
+        { key: "wallet" as const, label: copy.wallet, icon: <Wallet className="h-5 w-5" /> },
+        { key: "profile" as const, label: copy.profile, icon: <User className="h-5 w-5" /> },
+      ];
 
   const acknowledgeLawyerNotice = () => {
     if (noticeKey) {
@@ -368,7 +375,11 @@ function HomePage({
           </aside>
 
           <main className="brand-surface rounded-[1.8rem] p-4 sm:p-6">
-            {currentTab === "home" ? (
+            {currentTab === "home" && isLawyer ? (
+              <LawyerDashboard locale={locale} onNavigate={(tab) => setCurrentTab(tab as Tab)} />
+            ) : null}
+
+            {currentTab === "home" && !isLawyer ? (
               <section className="space-y-5">
                 <div className="brand-hero overflow-hidden rounded-[1.8rem] px-5 py-7 text-white sm:px-8">
                   <div className="max-w-2xl">
@@ -376,10 +387,10 @@ function HomePage({
                       {copy.eyebrow}
                     </span>
                     <h1 className="brand-title mt-4 text-3xl font-semibold leading-tight sm:text-4xl">
-                      {isLawyer ? copy.lawyerTitle : copy.workerTitle}
+                      {copy.workerTitle}
                     </h1>
                     <p className="mt-4 max-w-2xl text-sm leading-7 text-white/84">
-                      {isLawyer ? copy.lawyerBody : copy.workerBody}
+                      {copy.workerBody}
                     </p>
                   </div>
                 </div>
@@ -396,8 +407,8 @@ function HomePage({
                       />
                       <ActionCard
                         icon={<Phone className="h-6 w-6 text-sky-600" />}
-                        title={isLawyer ? copy.lawyersLawyer : copy.lawyersWorker}
-                        subtitle={isLawyer ? copy.lawyerDeskAction : copy.lawyerAction}
+                        title={copy.lawyersWorker}
+                        subtitle={copy.lawyerAction}
                         onClick={() => setCurrentTab("lawyers")}
                       />
                       <ActionCard
@@ -410,8 +421,8 @@ function HomePage({
                   </div>
 
                   <NoticeCard
-                    title={isLawyer ? copy.lawyerNoticeTitle : copy.workerNoticeTitle}
-                    items={isLawyer ? copy.lawyerNoticeItems : copy.workerNoticeItems}
+                    title={copy.workerNoticeTitle}
+                    items={copy.workerNoticeItems}
                   />
                 </div>
               </section>
@@ -425,7 +436,9 @@ function HomePage({
                 onStartCall={handleStartCall}
               />
             ) : null}
-            {currentTab === "wallet" ? <WalletPage locale={locale} /> : null}
+            {currentTab === "wallet" ? (
+              isLawyer ? <LawyerWalletPage locale={locale} /> : <WalletPage locale={locale} />
+            ) : null}
             {currentTab === "profile" ? (
               <ProfilePage locale={locale} />
             ) : null}
