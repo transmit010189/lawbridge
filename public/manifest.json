@@ -1,0 +1,27 @@
+{
+  "name": "LawBridge 法橋",
+  "short_name": "LawBridge",
+  "description": "移工法律協助、RAG 法規問答、律師通話與點數錢包。",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f4f0ea",
+  "theme_color": "#14233a",
+  "lang": "zh-TW",
+  "categories": ["business", "productivity", "legal"],
+  "icons": [
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

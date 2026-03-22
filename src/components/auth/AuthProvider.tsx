@@ -18,6 +18,15 @@ interface AuthContextType {
   ) => Promise<User>;
   signInWithEmail: (email: string, password: string) => Promise<void>;
   signInWithGoogle: (role?: UserRole, language?: SupportedLocale) => Promise<User | null>;
+  requestPhoneOtp: (phoneNumber: string, language: SupportedLocale) => Promise<string>;
+  verifyPhoneOtp: (
+    code: string,
+    mode: "login" | "register",
+    role: UserRole,
+    language: SupportedLocale,
+    displayName: string
+  ) => Promise<User>;
+  resetPhoneOtp: () => void;
   signOut: () => Promise<void>;
 }
 

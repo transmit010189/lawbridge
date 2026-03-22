@@ -28,6 +28,7 @@ import { PostCallRating } from "@/components/consultation/PostCallRating";
 import { LawyerDashboard } from "@/components/lawyer/LawyerDashboard";
 import { LawyerListPage } from "@/components/lawyer/LawyerListPage";
 import { LawyerVerificationPage } from "@/components/lawyer/LawyerVerificationPage";
+import { PwaInstallButton } from "@/components/pwa/PwaInstallButton";
 import { LawyerWalletPage } from "@/components/wallet/LawyerWalletPage";
 import { WalletPage } from "@/components/wallet/WalletPage";
 import { authenticatedFetch } from "@/lib/api/authenticatedFetch";
@@ -253,6 +254,7 @@ function HomePage({
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <BrandLogo size={46} onClick={() => setCurrentTab("home")} />
             <div className="flex flex-wrap items-center gap-3">
+              <PwaInstallButton locale={locale} />
               <LocaleMenu value={locale} onChange={onLocaleChange} />
               <button
                 type="button"
